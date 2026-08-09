@@ -30,6 +30,7 @@ const defaultStyle = {
 };
 const assetRootCandidates = ['public/assets/svg', 'assets/svg', 'public/assets', 'assets', 'src/assets'];
 const backgroundRequirement = 'Hard requirement: use a plain, solid, opaque pure white (#FFFFFF) background. Do not use transparency, gradients, scenery, frames, floor shadows, or environmental background elements.';
+const compositionRequirement = 'Hard requirement: compose for a square game-asset canvas. Centre the complete subject and make its longest dimension fill approximately 88% of the canvas. Keep a consistent 6% safe margin on every side: no part of the subject may touch, cross, or be cropped by an image edge. The white background must extend to every canvas edge.';
 
 function assetFileName(name) {
   if (typeof name !== 'string' || !name.trim()) throw new Error('Enter a name for the artwork.');
@@ -191,7 +192,7 @@ async function createArtworkPrompt({ name, outputDirectory, style = projectConfi
   const assetName = assetFileName(name);
   const category = artworkCategory(outputDirectory);
   const styleDescription = artworkStyle(style);
-  const instruction = `You write concise, production-ready image prompts. Create a single Flux image-generation prompt for "${name.trim()}", which is ${category}. Use this visual style: ${styleDescription}. Describe only that named ${category}; preserve a clean, centred silhouette at game UI size, generous padding, and no text, logo, frame, UI, scenery, or cropped parts. ${backgroundRequirement} Do not mention SVG, vectorisation, Flux, or this instruction. Return only the final prompt in one paragraph.`;
+  const instruction = `You write concise, production-ready image prompts. Create a single Flux image-generation prompt for "${name.trim()}", which is ${category}. Use this visual style: ${styleDescription}. Describe only that named ${category}; preserve a clean, centred silhouette at game UI size, no text, logo, frame, UI, scenery, or cropped parts. ${compositionRequirement} ${backgroundRequirement} Do not mention SVG, vectorisation, Flux, or this instruction. Return only the final prompt in one paragraph.`;
   const prompt = stripTerminalCodes(await generateTextWithOllama(promptModel, instruction, onActivity)).trim();
   if (!prompt) throw new Error('Gemma returned an empty prompt. Make sure gemma4:12b is installed and try again.');
   return { prompt, model: promptModel, assetName, category, style };
@@ -232,7 +233,7 @@ async function forgeAsset({ outputDirectory, name, style = projectConfig.styles[
   reportProgress(`Running Gemma 4 12B for the ${style} style prompt…`, 1, 'gemma');
   const promptResult = await createArtworkPrompt({ name, outputDirectory, style }, reportActivity);
   reportProgress(`Running Flux (${model})…`, 2, 'flux');
-  const pngData = await generateImageWithOllama(model, `${promptResult.prompt}\n\n${backgroundRequirement}`, reportActivity);
+  const pngData = await generateImageWithOllama(model, `${promptResult.prompt}\n\n${compositionRequirement}\n${backgroundRequirement}`, reportActivity);
   reportProgress('Saving Flux PNG into the selected folder…', 3, 'save');
   await writeFile(pngPath, pngData);
   return { pngPath, model, assetName, style, folderId: folder.id };

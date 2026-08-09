@@ -21,6 +21,11 @@ Jobs are queued: Gemma, Flux, and saving run one at a time. The queue shows
 the current stage, final output location, failures, and a hover preview of
 completed PNGs.
 
+Every request includes a square-canvas composition rule: the complete subject
+is centred, its longest dimension targets 88% of the canvas, and a 6% margin
+is reserved at every edge. This keeps generated assets consistently large
+without clipping them.
+
 ## Requirements
 
 - Node.js 20 or newer
