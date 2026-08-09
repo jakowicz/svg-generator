@@ -128,13 +128,13 @@ async function loadProjectConfig() {
 
 const projectConfig = await loadProjectConfig();
 
-function run(command, args, { cwd = workspaceDirectory } = {}) {
+function run(command, args, { cwd = workspaceDirectory, onActivity } = {}) {
   return new Promise((resolveRun, rejectRun) => {
     const child = spawn(command, args, { cwd, shell: false });
     let output = '';
     let errorOutput = '';
-    child.stdout.on('data', (chunk) => { output += chunk; });
-    child.stderr.on('data', (chunk) => { errorOutput += chunk; });
+    child.stdout.on('data', (chunk) => { output += chunk; onActivity?.(); });
+    child.stderr.on('data', (chunk) => { errorOutput += chunk; onActivity?.(); });
     child.on('error', (error) => rejectRun(new Error(`Could not start ${command}: ${error.message}`)));
     child.on('close', (code) => {
       if (code === 0) resolveRun({ output, errorOutput });
@@ -166,7 +166,7 @@ async function locateVectorizer() {
   }
 }
 
-async function vectorize(inputPath, outputPath, vectorizer) {
+async function vectorize(inputPath, outputPath, vectorizer, onActivity) {
   const argumentsForTrace = [
     '--input', inputPath,
     '--output', outputPath,
@@ -177,9 +177,9 @@ async function vectorize(inputPath, outputPath, vectorizer) {
     '--path_precision', '2',
   ];
   if (vectorizer === 'cli') {
-    await run('vtracer', ['--preset', 'poster', ...argumentsForTrace]);
+    await run('vtracer', ['--preset', 'poster', ...argumentsForTrace], { onActivity });
   } else {
-    await run('python3', [pythonVectorizerFile, ...argumentsForTrace]);
+    await run('python3', [pythonVectorizerFile, ...argumentsForTrace], { onActivity });
   }
 }
 
@@ -207,19 +207,19 @@ function generatedPngPath(output) {
   return match[1].trim();
 }
 
-async function createArtworkPrompt({ name, outputDirectory, style = projectConfig.styles[0].id }) {
+async function createArtworkPrompt({ name, outputDirectory, style = projectConfig.styles[0].id }, onActivity) {
   const assetName = assetFileName(name);
   const category = artworkCategory(outputDirectory);
   const styleDescription = artworkStyle(style);
   await assertAvailable('ollama');
   const instruction = `You write concise, production-ready image prompts. Create a single Flux image-generation prompt for "${name.trim()}", which is ${category}. Use this visual style: ${styleDescription}. Describe only that named ${category}; preserve a clean, centred silhouette at game UI size, generous padding, a transparent background, and no text, logo, frame, UI, scenery, or cropped parts. Do not mention SVG, vectorisation, Flux, or this instruction. Return only the final prompt in one paragraph.`;
-  const result = await run('ollama', ['run', promptModel, instruction]);
+  const result = await run('ollama', ['run', promptModel, instruction], { onActivity });
   const prompt = stripTerminalCodes(result.output).trim();
   if (!prompt) throw new Error('Gemma returned an empty prompt. Make sure gemma4:12b is installed and try again.');
   return { prompt, model: promptModel, assetName, category, style };
 }
 
-async function forgeAsset({ outputDirectory, name, style = projectConfig.styles[0].id, model = defaultModel, overwrite = false }, reportProgress = () => {}) {
+async function forgeAsset({ outputDirectory, name, style = projectConfig.styles[0].id, model = defaultModel, overwrite = false }, reportProgress = () => {}, reportActivity = () => {}) {
   const assetName = assetFileName(name);
   const folder = selectedOutputFolder(outputDirectory);
   if (typeof model !== 'string' || !/^[-/a-zA-Z0-9_.:]+$/.test(model)) throw new Error('Model name is invalid.');
@@ -234,18 +234,18 @@ async function forgeAsset({ outputDirectory, name, style = projectConfig.styles[
     }
   }
 
-  reportProgress(`Running Gemma 4 12B for the ${style} style prompt…`);
-  const promptResult = await createArtworkPrompt({ name, outputDirectory, style });
-  reportProgress('Checking SVG conversion tools…');
+  reportProgress(`Running Gemma 4 12B for the ${style} style prompt…`, 1, 'gemma');
+  const promptResult = await createArtworkPrompt({ name, outputDirectory, style }, reportActivity);
+  reportProgress('Checking SVG conversion tools…', 2, 'tools');
   const vectorizer = await locateVectorizer();
-  reportProgress(`Running Flux (${model})…`);
-  const flux = await run('ollama', ['run', model, promptResult.prompt]);
+  reportProgress(`Running Flux (${model})…`, 3, 'flux');
+  const flux = await run('ollama', ['run', model, promptResult.prompt], { onActivity: reportActivity });
   const temporaryPng = generatedPngPath(`${flux.output}\n${flux.errorOutput}`);
   await access(temporaryPng, constants.R_OK);
-  reportProgress('Copying Flux PNG into the selected folder…');
+  reportProgress('Copying Flux PNG into the selected folder…', 4, 'copy');
   await copyFile(temporaryPng, pngPath);
-  reportProgress(`Converting PNG to SVG with ${vectorizer === 'cli' ? 'VTracer' : 'the Python VTracer binding'}…`);
-  await vectorize(pngPath, svgPath, vectorizer);
+  reportProgress(`Converting PNG to SVG with ${vectorizer === 'cli' ? 'VTracer' : 'the Python VTracer binding'}…`, 5, 'vectorize');
+  await vectorize(pngPath, svgPath, vectorizer, reportActivity);
   return { pngPath, svgPath, model, vectorizer, assetName, style };
 }
 
@@ -267,6 +267,8 @@ function queueJob(kind, payload) {
     name: payload.name.trim(),
     status: 'queued',
     stage: 'Waiting for the previous job…',
+    step: 0,
+    totalSteps: 5,
     createdAt: now,
     updatedAt: now,
     payload,
@@ -288,9 +290,11 @@ async function processQueue() {
     while (queuedJobIds.length > 0) {
       const job = jobs.get(queuedJobIds.shift());
       if (!job) continue;
-      updateJob(job, { status: 'running', stage: 'Preparing artwork job…', startedAt: new Date().toISOString() });
+      updateJob(job, { status: 'running', stage: 'Preparing artwork job…', step: 0, phase: 'preparing', startedAt: new Date().toISOString(), stageStartedAt: new Date().toISOString() });
       try {
-        const result = await forgeAsset(job.payload, (stage) => updateJob(job, { stage }));
+        const reportProgress = (stage, step, phase) => updateJob(job, { stage, step, phase, stageStartedAt: new Date().toISOString(), lastActivityAt: undefined });
+        const reportActivity = () => updateJob(job, { lastActivityAt: new Date().toISOString() });
+        const result = await forgeAsset(job.payload, reportProgress, reportActivity);
         updateJob(job, { status: 'complete', stage: 'PNG and SVG saved.', result, finishedAt: new Date().toISOString() });
       } catch (error) {
         updateJob(job, { status: 'failed', stage: 'Job failed.', error: error instanceof Error ? error.message : 'Asset generation failed.', finishedAt: new Date().toISOString() });

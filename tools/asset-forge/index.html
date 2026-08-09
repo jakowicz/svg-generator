@@ -28,6 +28,7 @@
       .job-list { display: grid; gap: 1px; background: #637957; } .empty-jobs { padding: 22px 16px; background: #1a2a22; color: #abc09a; font-size: 11px; }
       .job { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: start; padding: 14px 16px; background: #1d3027; } .job.running { background: linear-gradient(90deg, #243b2d, #1d3027); } .job.failed { background: #3b2926; } .job.complete { background: #223529; }
       .job-title { margin: 0 0 6px; color: #fff0bd; font-size: 12px; } .job-meta, .job-paths, .job-error { margin: 0; color: #b8caa8; font-size: 10px; line-height: 1.55; word-break: break-word; } .job-error { color: #ffd1c3; } .job-paths { color: #e9d98d; white-space: pre-wrap; }
+      .job-progress { margin: 8px 0 0; color: #e2eac4; font-size: 10px; line-height: 1.5; } .stage-rail { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; width: min(300px, 100%); margin: 9px 0 0; } .stage-rail span { height: 4px; background: #3f5644; } .stage-rail span.complete { background: #d0ad55; } .stage-rail span.current { background: #a7d376; animation: signal 1.2s steps(2, end) infinite; }
       .badge { display: inline-block; padding: 3px 6px; border: 1px solid #94b377; color: #dce9b2; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; } .badge.queued { color: #e8db99; border-color: #b7a860; } .badge.running { color: #d5f0a7; border-color: #8bb76b; animation: signal 1.2s steps(2, end) infinite; } .badge.complete { color: #ffedab; border-color: #d4ae5b; } .badge.failed { color: #ffd0c2; border-color: #dd7563; }
       .preview { position: relative; display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid #d4ae5b; background: conic-gradient(#263d30 25%, #1a2c23 0 50%, #263d30 0 75%, #1a2c23 0); background-size: 12px 12px; color: #ffedab; font-size: 18px; cursor: zoom-in; } .preview img { display: none; position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 4; width: min(300px, 60vw); max-height: 300px; object-fit: contain; border: 2px solid #f1cd70; background: #17231f; box-shadow: 8px 8px 0 #0d1512; } .preview:hover img, .preview:focus-within img { display: block; }
       @keyframes signal { 50% { opacity: .55; } }
@@ -52,6 +53,14 @@
     <script>
       const form = document.querySelector('#forge-form'); const button = document.querySelector('#submit'); const status = document.querySelector('#status'); const folder = form.elements.outputDirectory; const style = form.elements.style; const stylePrompt = document.querySelector('#style-prompt'); const jobList = document.querySelector('#job-list'); let knownJobs = []; let styles = new Map();
       const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
+      const elapsed = (time) => { if (!time) return '0s'; const seconds = Math.max(0, Math.floor((Date.now() - new Date(time).getTime()) / 1000)); return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`; };
+      function liveProgress(job) {
+        if (job.status !== 'running') return '';
+        const step = Math.max(0, Math.min(job.step ?? 0, job.totalSteps ?? 5));
+        const modelActivity = ['gemma', 'flux'].includes(job.phase) ? (job.lastActivityAt ? ` Last model signal ${elapsed(job.lastActivityAt)} ago.` : ' Waiting for the first model signal…') : '';
+        const rail = Array.from({ length: job.totalSteps ?? 5 }, (_, index) => `<span class="${index + 1 < step ? 'complete' : index + 1 === step ? 'current' : ''}"></span>`).join('');
+        return `<p class="job-progress">Stage ${step || 1} of ${job.totalSteps ?? 5} · job ${elapsed(job.startedAt)} · this stage ${elapsed(job.stageStartedAt)}.${modelActivity}</p><div class="stage-rail" aria-label="Stage ${step || 1} of ${job.totalSteps ?? 5}">${rail}</div>`;
+      }
       function renderStylePrompt() { const selected = styles.get(style.value); if (selected) stylePrompt.innerHTML = `<b>Style instructions sent to Gemma:</b> ${escapeHtml(selected.prompt)}.`; }
       style.addEventListener('change', renderStylePrompt);
       async function loadProjectConfiguration() {
@@ -65,7 +74,7 @@
         jobList.innerHTML = jobs.map((job) => {
           const type = 'Asset forge';
           const result = job.result ?? {}; const paths = result.pngPath ? `PNG  ${result.pngPath}\nSVG  ${result.svgPath}` : '';
-          return `<article class="job ${job.status}"><div><p class="job-title">${escapeHtml(type)} · ${escapeHtml(job.name)}</p><p class="job-meta">${escapeHtml(job.stage)}</p>${paths ? `<p class="job-paths">${escapeHtml(paths)}</p>` : ''}${job.error ? `<p class="job-error">${escapeHtml(job.error)}</p>` : ''}</div><div><span class="badge ${job.status}">${escapeHtml(job.status)}</span>${preview(job)}</div></article>`;
+          return `<article class="job ${job.status}"><div><p class="job-title">${escapeHtml(type)} · ${escapeHtml(job.name)}</p><p class="job-meta">${escapeHtml(job.stage)}</p>${liveProgress(job)}${paths ? `<p class="job-paths">${escapeHtml(paths)}</p>` : ''}${job.error ? `<p class="job-error">${escapeHtml(job.error)}</p>` : ''}</div><div><span class="badge ${job.status}">${escapeHtml(job.status)}</span>${preview(job)}</div></article>`;
         }).join('');
       }
       async function refreshJobs() {
