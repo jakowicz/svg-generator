@@ -20,7 +20,10 @@ function isWhiteBackdropIsland({ data }, pixel) {
   const red = data[offset];
   const green = data[offset + 1];
   const blue = data[offset + 2];
-  return Math.min(red, green, blue) >= 235 && Math.max(red, green, blue) - Math.min(red, green, blue) <= 24;
+  // Flux often produces a slightly warm white canvas (for example #FAFCE9),
+  // so this intentionally keys light, low-saturation backdrop pixels rather
+  // than only exact neutral white.
+  return Math.min(red, green, blue) >= 210 && Math.max(red, green, blue) - Math.min(red, green, blue) <= 48;
 }
 
 /** Removes white backdrop islands anywhere, then strips the light anti-aliasing matte from the outer edge. */
