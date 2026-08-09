@@ -45,6 +45,16 @@ function assetFileName(name) {
   return fileName;
 }
 
+function artworkNames(value) {
+  if (typeof value !== 'string') throw new Error('Enter one or more artwork names.');
+  const names = value.split(',').map((name) => name.trim());
+  if (names.length > 20) throw new Error('Queue no more than 20 artwork names at once.');
+  if (names.some((name) => !name)) throw new Error('Remove empty names from the comma-separated list.');
+  const fileNames = names.map(assetFileName);
+  if (new Set(fileNames).size !== fileNames.length) throw new Error('Each artwork name must produce a unique file name.');
+  return names;
+}
+
 function artworkCategory(outputDirectory) {
   const configuredFolder = projectConfig.outputFolders.find((folder) => folder.path === outputDirectory);
   if (configuredFolder?.category) return configuredFolder.category;
@@ -385,10 +395,11 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === 'POST' && request.url === '/api/forge') {
       const payload = await requestBody(request);
-      assetFileName(payload.name);
+      const names = artworkNames(payload.name);
       selectedOutputFolder(payload.outputDirectory);
       artworkStyle(payload.style ?? projectConfig.styles[0].id);
-      json(response, 202, { job: queueJob('forge', payload) });
+      const queuedJobs = names.map((name) => queueJob('forge', { ...payload, name }));
+      json(response, 202, { jobs: queuedJobs });
       return;
     }
     const previewMatch = request.method === 'GET' && request.url?.match(/^\/api\/jobs\/([0-9]+)\/preview\.png$/);

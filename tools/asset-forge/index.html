@@ -43,7 +43,7 @@
       <header><div class="sigil" aria-hidden="true">✦</div><div><p class="eyebrow">LOCAL ARTWORK PIPELINE</p><h1>Asset Forge</h1><p class="lead">Turn an artwork name into a high-quality saved PNG. Generation and files stay on this Mac.</p></div></header>
       <section class="forge">
         <form id="forge-form">
-          <div class="pair"><label>Artwork name <span>The file name is created automatically.</span><input name="name" required placeholder="Minotaur" /></label><label>Output folder <span>Detected from this project and used to tell Gemma what to create.</span><select name="outputDirectory" required disabled><option>Loading project folders…</option></select></label></div>
+          <div class="pair"><label>Artwork name <span>Enter one name, or a comma-separated queue such as <code>Minotaur, Phoenix, Leviathan</code>.</span><input name="name" required placeholder="Minotaur, Phoenix, Leviathan" /></label><label>Output folder <span>Detected from this project and used to tell Gemma what to create.</span><select name="outputDirectory" required disabled><option>Loading project folders…</option></select></label></div>
           <label>Artwork style <span>The selected style guides Gemma’s generated Flux prompt.</span><select name="style" required disabled><option>Loading project styles…</option></select></label>
           <p id="style-prompt" class="style-prompt"><b>Style instructions sent to Gemma:</b> Emberhold's current 2D retro fantasy RPG style: bold dark outlines, readable graphic shapes, restrained rich colours, and a hand-painted pixel-inspired feel without pixel blocks.</p>
           <button id="submit" type="submit">Generate PNG</button>
@@ -104,7 +104,7 @@
       form.addEventListener('submit', async (event) => {
         event.preventDefault(); button.disabled = true; status.className = 'status'; status.textContent = 'Flux job queued. It will start as soon as the current job finishes.';
         const values = Object.fromEntries(new FormData(form)); values.overwrite = Boolean(values.overwrite);
-        try { const response = await fetch('/api/forge', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(values) }); const result = await response.json(); if (!response.ok) throw new Error(result.error); form.elements.name.value = ''; status.className = 'status success'; status.textContent = `Asset forge job #${result.job.id} queued. Progress and saved files appear below.`; await refreshJobs(); }
+        try { const response = await fetch('/api/forge', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(values) }); const result = await response.json(); if (!response.ok) throw new Error(result.error); form.elements.name.value = ''; const count = result.jobs?.length ?? 0; status.className = 'status success'; status.textContent = `${count} artwork ${count === 1 ? 'job' : 'jobs'} queued. Progress and saved files appear below.`; await refreshJobs(); }
         catch (error) { status.className = 'status error'; status.textContent = error instanceof Error ? error.message : 'Asset generation failed.'; }
         finally { button.disabled = false; }
       });

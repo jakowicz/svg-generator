@@ -17,6 +17,10 @@ Open the local Forge page, enter an artwork name such as **Minotaur**, choose
 the project output folder and a style, then select **Generate PNG**. The file
 name is made safely from the name (`minotaur.png`).
 
+To create several assets, enter a comma-separated list—for example
+`Minotaur, Phoenix, Leviathan`. Forge validates the complete list, then queues
+one PNG job per name in that order (up to 20 at once).
+
 Jobs are queued: Gemma, Flux, and saving run one at a time. The queue shows
 the current stage, final output location, failures, and a hover preview of
 completed PNGs.
