@@ -365,7 +365,10 @@ async function loadArtworkHistory() {
   try {
     const history = JSON.parse(await readFile(historyFile, 'utf8'));
     return Array.isArray(history) ? history.filter((entry) => entry && typeof entry === 'object') : [];
-  } catch { return []; }
+  } catch (error) {
+    if (error?.code === 'ENOENT') await writeFile(historyFile, '[]\n');
+    return [];
+  }
 }
 
 async function recordArtwork(result, name) {
