@@ -95,7 +95,7 @@
       form.addEventListener('submit', async (event) => {
         event.preventDefault(); button.disabled = true; status.className = 'status'; status.textContent = 'Flux job queued. It will start as soon as the current job finishes.';
         const values = Object.fromEntries(new FormData(form)); values.overwrite = Boolean(values.overwrite);
-        try { const response = await fetch('/api/forge', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(values) }); const result = await response.json(); if (!response.ok) throw new Error(result.error); status.className = 'status success'; status.textContent = `Asset forge job #${result.job.id} queued. Progress and saved files appear below.`; await refreshJobs(); }
+        try { const response = await fetch('/api/forge', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(values) }); const result = await response.json(); if (!response.ok) throw new Error(result.error); form.elements.name.value = ''; status.className = 'status success'; status.textContent = `Asset forge job #${result.job.id} queued. Progress and saved files appear below.`; await refreshJobs(); }
         catch (error) { status.className = 'status error'; status.textContent = error instanceof Error ? error.message : 'Asset generation failed.'; }
         finally { button.disabled = false; }
       });
