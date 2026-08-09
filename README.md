@@ -52,6 +52,14 @@ without clipping them.
 ## Requirements
 
 - Node.js 20 or newer
+- Install Forge's local dependencies once after cloning or updating the
+  submodule:
+
+  ```bash
+  cd tools/svg-generator
+  npm install
+  cd ../..
+  ```
 - [Ollama](https://ollama.com/), running locally
 - A Flux image model and Gemma prompt model:
 
