@@ -7,7 +7,7 @@
  * text and output paths cannot become shell commands.
  */
 import { createServer } from 'node:http';
-import { access, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
+import { access, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +17,8 @@ const workspaceDirectory = resolve(process.cwd());
 const uiFile = resolve(scriptDirectory, '..', 'tools/asset-forge/index.html');
 const projectConfigFile = resolve(workspaceDirectory, 'asset-forge.config.json');
 const historyFile = resolve(workspaceDirectory, '.asset-forge-history.json');
+const jobStoreFile = resolve(workspaceDirectory, '.asset-forge-queue.json');
+const jobStoreTemporaryFile = resolve(workspaceDirectory, '.asset-forge-queue.json.tmp');
 const host = '127.0.0.1';
 const port = Number(process.env.ASSET_FORGE_PORT ?? 4177);
 const ollamaApi = 'http://127.0.0.1:11434';
@@ -253,15 +255,33 @@ const jobs = new Map();
 const queuedJobIds = [];
 let runningJob = false;
 let nextJobId = 1;
+let jobStoreWrite = Promise.resolve();
 
 function publicJob(job) {
   const { payload, ...details } = job;
   return details;
 }
 
-function queueJob(kind, payload) {
+function jobStoreSnapshot() {
+  return JSON.stringify({ version: 1, nextJobId, queuedJobIds, jobs: [...jobs.values()] }, null, 2);
+}
+
+function persistJobStore() {
+  const snapshot = `${jobStoreSnapshot()}\n`;
+  jobStoreWrite = jobStoreWrite.catch(() => {}).then(async () => {
+    await writeFile(jobStoreTemporaryFile, snapshot);
+    await rename(jobStoreTemporaryFile, jobStoreFile);
+  });
+  return jobStoreWrite;
+}
+
+function persistJobStoreInBackground() {
+  void persistJobStore().catch((error) => console.error(`Could not save Asset Forge queue: ${error.message}`));
+}
+
+async function queueJobs(kind, payloads) {
   const now = new Date().toISOString();
-  const job = {
+  const newJobs = payloads.map((payload) => ({
     id: String(nextJobId++),
     kind,
     name: payload.name.trim(),
@@ -272,15 +292,19 @@ function queueJob(kind, payload) {
     createdAt: now,
     updatedAt: now,
     payload,
-  };
-  jobs.set(job.id, job);
-  queuedJobIds.push(job.id);
+  }));
+  for (const job of newJobs) {
+    jobs.set(job.id, job);
+    queuedJobIds.push(job.id);
+  }
+  await persistJobStore();
   void processQueue();
-  return publicJob(job);
+  return newJobs.map(publicJob);
 }
 
 function updateJob(job, changes) {
   Object.assign(job, changes, { updatedAt: new Date().toISOString() });
+  persistJobStoreInBackground();
 }
 
 async function processQueue() {
@@ -304,6 +328,63 @@ async function processQueue() {
   } finally {
     runningJob = false;
   }
+}
+
+async function loadPersistedJobs() {
+  let store;
+  try {
+    store = JSON.parse(await readFile(jobStoreFile, 'utf8'));
+  } catch (error) {
+    if (error?.code !== 'ENOENT') console.warn(`Ignoring invalid Asset Forge queue: ${error.message}`);
+    return;
+  }
+  if (!store || !Array.isArray(store.jobs)) return;
+
+  const recoveredIds = new Set();
+  for (const savedJob of store.jobs) {
+    try {
+      if (savedJob?.kind !== 'forge' || !/^[0-9]+$/.test(savedJob.id ?? '') || !savedJob.payload) continue;
+      const name = String(savedJob.payload.name ?? savedJob.name ?? '').trim();
+      const assetName = assetFileName(name);
+      const folder = selectedOutputFolder(savedJob.payload.outputDirectory);
+      artworkStyle(savedJob.payload.style ?? projectConfig.styles[0].id);
+      const status = ['queued', 'running', 'complete', 'failed'].includes(savedJob.status) ? savedJob.status : 'failed';
+      const job = {
+        ...savedJob,
+        id: String(savedJob.id),
+        name,
+        status,
+        totalSteps: 3,
+        payload: { ...savedJob.payload, name },
+      };
+      if (status === 'running') {
+        const pngPath = resolve(workspaceDirectory, folder.path, `${assetName}.png`);
+        try {
+          await access(pngPath, constants.R_OK);
+          job.status = 'complete';
+          job.stage = 'PNG saved before the local Forge restart.';
+          job.result = { pngPath, model: job.payload.model ?? defaultModel, assetName, style: job.payload.style ?? projectConfig.styles[0].id, folderId: folder.id };
+          job.finishedAt = new Date().toISOString();
+          await recordArtwork(job.result, name);
+        } catch {
+          job.status = 'queued';
+          job.stage = 'Resuming after a local Forge restart…';
+          job.step = 0;
+          job.phase = 'preparing';
+          delete job.error;
+          delete job.startedAt;
+        }
+      }
+      jobs.set(job.id, job);
+      if (job.status === 'queued') recoveredIds.add(job.id);
+      nextJobId = Math.max(nextJobId, Number(job.id) + 1);
+    } catch { /* Ignore individual corrupt or incompatible saved jobs. */ }
+  }
+  for (const id of store.queuedJobIds ?? []) {
+    if (recoveredIds.delete(id)) queuedJobIds.push(id);
+  }
+  queuedJobIds.push(...[...recoveredIds].sort((left, right) => Number(left) - Number(right)));
+  await persistJobStore();
 }
 
 function allPublicJobs() {
@@ -398,7 +479,7 @@ const server = createServer(async (request, response) => {
       const names = artworkNames(payload.name);
       selectedOutputFolder(payload.outputDirectory);
       artworkStyle(payload.style ?? projectConfig.styles[0].id);
-      const queuedJobs = names.map((name) => queueJob('forge', { ...payload, name }));
+      const queuedJobs = await queueJobs('forge', names.map((name) => ({ ...payload, name })));
       json(response, 202, { jobs: queuedJobs });
       return;
     }
@@ -431,6 +512,9 @@ const server = createServer(async (request, response) => {
     json(response, 400, { error: error instanceof Error ? error.message : 'Asset generation failed.' });
   }
 });
+
+await loadPersistedJobs();
+void processQueue();
 
 server.listen(port, host, () => {
   console.log(`Asset Forge is ready at http://${host}:${port}`);
