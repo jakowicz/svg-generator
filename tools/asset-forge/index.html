@@ -28,7 +28,7 @@
       .job-list { display: grid; gap: 1px; background: #637957; } .empty-jobs { padding: 22px 16px; background: #1a2a22; color: #abc09a; font-size: 11px; }
       .job { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: start; padding: 14px 16px; background: #1d3027; } .job.running { background: linear-gradient(90deg, #243b2d, #1d3027); } .job.failed { background: #3b2926; } .job.complete { background: #223529; }
       .job-title { margin: 0 0 6px; color: #fff0bd; font-size: 12px; } .job-meta, .job-paths, .job-error { margin: 0; color: #b8caa8; font-size: 10px; line-height: 1.55; word-break: break-word; } .job-error { color: #ffd1c3; } .job-paths { color: #e9d98d; white-space: pre-wrap; }
-      .job-progress { margin: 8px 0 0; color: #e2eac4; font-size: 10px; line-height: 1.5; } .stage-rail { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; width: min(300px, 100%); margin: 9px 0 0; } .stage-rail span { height: 4px; background: #3f5644; } .stage-rail span.complete { background: #d0ad55; } .stage-rail span.current { background: #a7d376; animation: signal 1.2s steps(2, end) infinite; }
+      .job-progress { margin: 8px 0 0; color: #e2eac4; font-size: 10px; line-height: 1.5; } .stage-rail { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; width: min(300px, 100%); margin: 9px 0 0; } .stage-rail span { height: 4px; background: #3f5644; } .stage-rail span.complete { background: #d0ad55; } .stage-rail span.current { background: #a7d376; animation: signal 1.2s steps(2, end) infinite; }
       .badge { display: inline-block; padding: 3px 6px; border: 1px solid #94b377; color: #dce9b2; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; } .badge.queued { color: #e8db99; border-color: #b7a860; } .badge.running { color: #d5f0a7; border-color: #8bb76b; animation: signal 1.2s steps(2, end) infinite; } .badge.complete { color: #ffedab; border-color: #d4ae5b; } .badge.failed { color: #ffd0c2; border-color: #dd7563; }
       .preview { position: relative; display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid #d4ae5b; background: conic-gradient(#263d30 25%, #1a2c23 0 50%, #263d30 0 75%, #1a2c23 0); background-size: 12px 12px; color: #ffedab; font-size: 18px; cursor: zoom-in; } .preview img { display: none; position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 4; width: min(300px, 60vw); max-height: 300px; object-fit: contain; border: 2px solid #f1cd70; background: #17231f; box-shadow: 8px 8px 0 #0d1512; } .preview:hover img, .preview:focus-within img { display: block; }
       .gallery { margin-top: 28px; border: 1px solid #87995d; background: #17231f; box-shadow: 10px 10px 0 #0d1512; } .gallery header { display: flex; justify-content: space-between; gap: 16px; margin: 0; padding: 13px 16px; border-bottom: 1px solid #87995d; background: #283a30; } .gallery h2 { margin: 0; color: #ffe69d; font-size: 13px; } .gallery header span { color: #aabf92; font-size: 10px; }
@@ -40,16 +40,16 @@
   </head>
   <body>
     <main>
-      <header><div class="sigil" aria-hidden="true">✦</div><div><p class="eyebrow">LOCAL ARTWORK PIPELINE</p><h1>Asset Forge</h1><p class="lead">Turn an artwork name into a saved PNG and a traceable SVG. Generation and files stay on this Mac.</p></div></header>
+      <header><div class="sigil" aria-hidden="true">✦</div><div><p class="eyebrow">LOCAL ARTWORK PIPELINE</p><h1>Asset Forge</h1><p class="lead">Turn an artwork name into a high-quality saved PNG. Generation and files stay on this Mac.</p></div></header>
       <section class="forge">
         <form id="forge-form">
           <div class="pair"><label>Artwork name <span>The file name is created automatically.</span><input name="name" required placeholder="Minotaur" /></label><label>Output folder <span>Detected from this project and used to tell Gemma what to create.</span><select name="outputDirectory" required disabled><option>Loading project folders…</option></select></label></div>
           <label>Artwork style <span>The selected style guides Gemma’s generated Flux prompt.</span><select name="style" required disabled><option>Loading project styles…</option></select></label>
           <p id="style-prompt" class="style-prompt"><b>Style instructions sent to Gemma:</b> Emberhold's current 2D retro fantasy RPG style: bold dark outlines, readable graphic shapes, restrained rich colours, and a hand-painted pixel-inspired feel without pixel blocks.</p>
-          <button id="submit" type="submit">Generate PNG and forge SVG</button>
+          <button id="submit" type="submit">Generate PNG</button>
           <output id="status" class="status" aria-live="polite"></output>
         </form>
-        <aside><h2>What happens</h2><div class="step"><b>1</b><span>Gemma 4 12B creates a Flux prompt from the name, folder, and selected style.</span></div><div class="step"><b>2</b><span>Calls your local Flux model through Ollama’s API.</span></div><div class="step"><b>3</b><span>Saves the PNG, then VTracer creates editable vector paths.</span></div><div class="step"><b>4</b><span>Saves a clean lowercase file name such as <code>minotaur.png</code> and <code>.svg</code>.</span></div><p class="status">Requires <code>gemma4:12b</code>, your Flux model, and either the <code>vtracer</code> CLI or Python package.<br><br>Python install: <code>python3 -m pip install vtracer</code></p></aside>
+        <aside><h2>What happens</h2><div class="step"><b>1</b><span>Gemma 4 12B creates a Flux prompt from the name, folder, and selected style.</span></div><div class="step"><b>2</b><span>Calls your local Flux model through Ollama’s API.</span></div><div class="step"><b>3</b><span>Saves the original high-quality PNG with a clean lowercase name such as <code>minotaur.png</code>.</span></div><p class="status">Requires <code>gemma4:12b</code> and your Flux model in Ollama.</p></aside>
       </section>
       <section class="jobs" aria-labelledby="jobs-heading"><header><h2 id="jobs-heading">Forge queue</h2><span>One local model job runs at a time.</span></header><div class="job-list" id="job-list"><p class="empty-jobs">No jobs yet. Queue an artwork generation to begin.</p></div></section>
       <section class="gallery" aria-labelledby="artwork-heading"><header><h2 id="artwork-heading">Generated artwork</h2><span>Completed Forge jobs recorded in this project.</span></header><div class="artwork-list" id="artwork-list"><p class="empty-artwork">No recorded Forge jobs yet.</p></div></section>
@@ -60,10 +60,10 @@
       const elapsed = (time) => { if (!time) return '0s'; const seconds = Math.max(0, Math.floor((Date.now() - new Date(time).getTime()) / 1000)); return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`; };
       function liveProgress(job) {
         if (job.status !== 'running') return '';
-        const step = Math.max(0, Math.min(job.step ?? 0, job.totalSteps ?? 5));
+        const step = Math.max(0, Math.min(job.step ?? 0, job.totalSteps ?? 3));
         const modelActivity = ['gemma', 'flux'].includes(job.phase) ? (job.lastActivityAt ? ` Last model signal ${elapsed(job.lastActivityAt)} ago.` : ' Waiting for the first model signal…') : '';
-        const rail = Array.from({ length: job.totalSteps ?? 5 }, (_, index) => `<span class="${index + 1 < step ? 'complete' : index + 1 === step ? 'current' : ''}"></span>`).join('');
-        return `<p class="job-progress">Stage ${step || 1} of ${job.totalSteps ?? 5} · job ${elapsed(job.startedAt)} · this stage ${elapsed(job.stageStartedAt)}.${modelActivity}</p><div class="stage-rail" aria-label="Stage ${step || 1} of ${job.totalSteps ?? 5}">${rail}</div>`;
+        const rail = Array.from({ length: job.totalSteps ?? 3 }, (_, index) => `<span class="${index + 1 < step ? 'complete' : index + 1 === step ? 'current' : ''}"></span>`).join('');
+        return `<p class="job-progress">Stage ${step || 1} of ${job.totalSteps ?? 3} · job ${elapsed(job.startedAt)} · this stage ${elapsed(job.stageStartedAt)}.${modelActivity}</p><div class="stage-rail" aria-label="Stage ${step || 1} of ${job.totalSteps ?? 3}">${rail}</div>`;
       }
       function renderStylePrompt() { const selected = styles.get(style.value); if (selected) stylePrompt.innerHTML = `<b>Style instructions sent to Gemma:</b> ${escapeHtml(selected.prompt)}.`; }
       style.addEventListener('change', renderStylePrompt);
@@ -77,7 +77,7 @@
         if (!jobs.length) { jobList.innerHTML = '<p class="empty-jobs">No jobs yet. Queue an artwork generation to begin.</p>'; return; }
         jobList.innerHTML = jobs.map((job) => {
           const type = 'Asset forge';
-          const result = job.result ?? {}; const paths = result.pngPath ? `PNG  ${result.pngPath}\nSVG  ${result.svgPath}` : '';
+          const result = job.result ?? {}; const paths = result.pngPath ? `PNG  ${result.pngPath}` : '';
           return `<article class="job ${job.status}"><div><p class="job-title">${escapeHtml(type)} · ${escapeHtml(job.name)}</p><p class="job-meta">${escapeHtml(job.stage)}</p>${liveProgress(job)}${paths ? `<p class="job-paths">${escapeHtml(paths)}</p>` : ''}${job.error ? `<p class="job-error">${escapeHtml(job.error)}</p>` : ''}</div><div><span class="badge ${job.status}">${escapeHtml(job.status)}</span>${preview(job)}</div></article>`;
         }).join('');
       }
@@ -87,7 +87,7 @@
       }
       function renderArtwork(artwork) {
         if (!artwork.length) { artworkList.innerHTML = '<p class="empty-artwork">No recorded Forge jobs yet.</p>'; return; }
-        artworkList.innerHTML = artwork.map((item) => `<article class="artwork" tabindex="0"><img src="${escapeHtml(item.previewUrl)}" alt="${escapeHtml(item.name)}" /><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.assetName)} · Forge record</p><button class="delete-artwork" type="button" data-delete-artwork="${escapeHtml(item.id)}">Delete PNG + SVG</button><div class="artwork-paths">PNG  ${escapeHtml(item.pngPath)}\nSVG  ${escapeHtml(item.svgPath)}</div></article>`).join('');
+        artworkList.innerHTML = artwork.map((item) => `<article class="artwork" tabindex="0"><img src="${escapeHtml(item.previewUrl)}" alt="${escapeHtml(item.name)}" /><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.assetName)} · Forge record</p><button class="delete-artwork" type="button" data-delete-artwork="${escapeHtml(item.id)}">Delete PNG</button><div class="artwork-paths">PNG  ${escapeHtml(item.pngPath)}</div></article>`).join('');
       }
       async function refreshArtwork() {
         try { const response = await fetch('/api/artwork', { cache: 'no-store' }); if (!response.ok) throw new Error('Could not read generated artwork.'); const result = await response.json(); renderArtwork(result.artwork); }
@@ -96,9 +96,9 @@
       artworkList.addEventListener('click', async (event) => {
         const target = event.target.closest('[data-delete-artwork]'); if (!target) return;
         const [folderId, assetName] = target.dataset.deleteArtwork.split(':');
-        if (!folderId || !assetName || !window.confirm(`Delete ${assetName}.png and ${assetName}.svg permanently?`)) return;
+        if (!folderId || !assetName || !window.confirm(`Delete ${assetName}.png permanently?`)) return;
         target.disabled = true;
-        try { const response = await fetch(`/api/artwork/${encodeURIComponent(folderId)}/${encodeURIComponent(assetName)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirmed: true }) }); const result = await response.json(); if (!response.ok) throw new Error(result.error); status.className = 'status success'; status.textContent = `Deleted ${assetName}.png and ${assetName}.svg.`; await refreshArtwork(); }
+        try { const response = await fetch(`/api/artwork/${encodeURIComponent(folderId)}/${encodeURIComponent(assetName)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirmed: true }) }); const result = await response.json(); if (!response.ok) throw new Error(result.error); status.className = 'status success'; status.textContent = `Deleted ${assetName}.png.`; await refreshArtwork(); }
         catch (error) { target.disabled = false; status.className = 'status error'; status.textContent = error instanceof Error ? error.message : 'Could not delete artwork.'; }
       });
       form.addEventListener('submit', async (event) => {

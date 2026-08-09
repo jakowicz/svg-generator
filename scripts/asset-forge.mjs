@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Local-only artwork pipeline:
- * prompt -> ollama run x/flux2-klein:9b -> PNG -> VTracer -> SVG.
+ * name -> Gemma prompt -> Flux PNG.
  *
  * It deliberately binds to loopback only and does not use a shell, so prompt
  * text and output paths cannot become shell commands.
@@ -9,7 +9,6 @@
 import { createServer } from 'node:http';
 import { access, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { spawn } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -18,7 +17,6 @@ const workspaceDirectory = resolve(process.cwd());
 const uiFile = resolve(scriptDirectory, '..', 'tools/asset-forge/index.html');
 const projectConfigFile = resolve(workspaceDirectory, 'asset-forge.config.json');
 const historyFile = resolve(workspaceDirectory, '.asset-forge-history.json');
-const pythonVectorizerFile = resolve(scriptDirectory, 'vectorize-with-vtracer.py');
 const host = '127.0.0.1';
 const port = Number(process.env.ASSET_FORGE_PORT ?? 4177);
 const ollamaApi = 'http://127.0.0.1:11434';
@@ -131,61 +129,6 @@ async function loadProjectConfig() {
 
 const projectConfig = await loadProjectConfig();
 
-function run(command, args, { cwd = workspaceDirectory, onActivity } = {}) {
-  return new Promise((resolveRun, rejectRun) => {
-    const child = spawn(command, args, { cwd, shell: false });
-    let output = '';
-    let errorOutput = '';
-    child.stdout.on('data', (chunk) => { output += chunk; onActivity?.(); });
-    child.stderr.on('data', (chunk) => { errorOutput += chunk; onActivity?.(); });
-    child.on('error', (error) => rejectRun(new Error(`Could not start ${command}: ${error.message}`)));
-    child.on('close', (code) => {
-      if (code === 0) resolveRun({ output, errorOutput });
-      else rejectRun(new Error(`${command} exited with code ${code}.\n${errorOutput || output}`.trim()));
-    });
-  });
-}
-
-async function assertAvailable(command, versionArgument = '--version') {
-  try {
-    await run(command, [versionArgument]);
-  } catch (error) {
-    throw new Error(`${command} is required. ${command === 'vtracer' ? 'Install it with: cargo install vtracer' : 'Install or start Ollama, then pull the selected Flux model.'} (${error.message})`);
-  }
-}
-
-/** Prefer the standalone CLI, but support the official Python binding too. */
-async function locateVectorizer() {
-  try {
-    await run('vtracer', ['--version']);
-    return 'cli';
-  } catch {
-    try {
-      await run('python3', ['-c', 'import vtracer']);
-      return 'python';
-    } catch (error) {
-      throw new Error(`VTracer is required. Install either the CLI (cargo install vtracer) or Python binding (python3 -m pip install vtracer). (${error.message})`);
-    }
-  }
-}
-
-async function vectorize(inputPath, outputPath, vectorizer, onActivity) {
-  const argumentsForTrace = [
-    '--input', inputPath,
-    '--output', outputPath,
-    '--colormode', 'color',
-    '--mode', 'spline',
-    '--filter_speckle', '12',
-    '--color_precision', '5',
-    '--path_precision', '2',
-  ];
-  if (vectorizer === 'cli') {
-    await run('vtracer', ['--preset', 'poster', ...argumentsForTrace], { onActivity });
-  } else {
-    await run('python3', [pythonVectorizerFile, ...argumentsForTrace], { onActivity });
-  }
-}
-
 function json(response, status, payload) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   response.end(JSON.stringify(payload));
@@ -280,24 +223,19 @@ async function forgeAsset({ outputDirectory, name, style = projectConfig.styles[
   const outputFolder = resolve(workspaceDirectory, folder.path);
   await access(outputFolder, constants.W_OK);
   const pngPath = resolve(outputFolder, `${assetName}.png`);
-  const svgPath = resolve(outputFolder, `${assetName}.svg`);
   if (!overwrite) {
-    for (const path of [pngPath, svgPath]) {
+    for (const path of [pngPath]) {
       try { await access(path, constants.F_OK); throw new Error(`${path} already exists. Enable overwrite or choose another artwork name.`); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     }
   }
 
   reportProgress(`Running Gemma 4 12B for the ${style} style prompt…`, 1, 'gemma');
   const promptResult = await createArtworkPrompt({ name, outputDirectory, style }, reportActivity);
-  reportProgress('Checking SVG conversion tools…', 2, 'tools');
-  const vectorizer = await locateVectorizer();
-  reportProgress(`Running Flux (${model})…`, 3, 'flux');
+  reportProgress(`Running Flux (${model})…`, 2, 'flux');
   const pngData = await generateImageWithOllama(model, `${promptResult.prompt}\n\n${backgroundRequirement}`, reportActivity);
-  reportProgress('Copying Flux PNG into the selected folder…', 4, 'copy');
+  reportProgress('Saving Flux PNG into the selected folder…', 3, 'save');
   await writeFile(pngPath, pngData);
-  reportProgress(`Converting PNG to SVG with ${vectorizer === 'cli' ? 'VTracer' : 'the Python VTracer binding'}…`, 5, 'vectorize');
-  await vectorize(pngPath, svgPath, vectorizer, reportActivity);
-  return { pngPath, svgPath, model, vectorizer, assetName, style, folderId: folder.id };
+  return { pngPath, model, assetName, style, folderId: folder.id };
 }
 
 const jobs = new Map();
@@ -319,7 +257,7 @@ function queueJob(kind, payload) {
     status: 'queued',
     stage: 'Waiting for the previous job…',
     step: 0,
-    totalSteps: 5,
+    totalSteps: 3,
     createdAt: now,
     updatedAt: now,
     payload,
@@ -347,7 +285,7 @@ async function processQueue() {
         const reportActivity = () => updateJob(job, { lastActivityAt: new Date().toISOString() });
         const result = await forgeAsset(job.payload, reportProgress, reportActivity);
         await recordArtwork(result, job.name);
-        updateJob(job, { status: 'complete', stage: 'PNG and SVG saved.', result, finishedAt: new Date().toISOString() });
+        updateJob(job, { status: 'complete', stage: 'PNG saved.', result, finishedAt: new Date().toISOString() });
       } catch (error) {
         updateJob(job, { status: 'failed', stage: 'Job failed.', error: error instanceof Error ? error.message : 'Asset generation failed.', finishedAt: new Date().toISOString() });
       }
@@ -373,17 +311,16 @@ async function loadArtworkHistory() {
 
 async function recordArtwork(result, name) {
   const history = await loadArtworkHistory();
-  const record = { name, assetName: result.assetName, folderId: result.folderId, pngPath: result.pngPath, svgPath: result.svgPath, createdAt: new Date().toISOString() };
+  const record = { name, assetName: result.assetName, folderId: result.folderId, pngPath: result.pngPath, createdAt: new Date().toISOString() };
   await writeFile(historyFile, `${JSON.stringify([record, ...history.filter((entry) => entry.pngPath !== record.pngPath)], null, 2)}\n`);
 }
 
-function publicArtwork({ folder, assetName, name = assetName, pngPath, svgPath, createdAt, origin }) {
+function publicArtwork({ folder, assetName, name = assetName, pngPath, createdAt, origin }) {
   return {
     id: `${folder.id}:${assetName}`,
     name,
     assetName,
     pngPath,
-    svgPath,
     createdAt,
     origin,
     previewUrl: `/api/artwork/${encodeURIComponent(folder.id)}/${encodeURIComponent(assetName)}/preview.png`,
@@ -397,7 +334,6 @@ async function generatedArtwork() {
     if (!folder || !assetNamePattern.test(entry.assetName ?? '')) continue;
     try {
       await access(entry.pngPath, constants.R_OK);
-      await access(entry.svgPath, constants.R_OK);
       items.set(`${folder.id}:${entry.assetName}`, publicArtwork({ ...entry, folder, origin: 'recorded' }));
     } catch { /* Omit moved or removed assets. */ }
   }
@@ -412,12 +348,10 @@ async function deleteRecordedArtwork(folderId, assetName) {
   if (!record) throw new Error('Only artwork recorded by Forge can be deleted here.');
 
   const pngPath = resolve(workspaceDirectory, folder.path, `${assetName}.png`);
-  const svgPath = resolve(workspaceDirectory, folder.path, `${assetName}.svg`);
-  if (record.pngPath !== pngPath || record.svgPath !== svgPath) throw new Error('The recorded artwork path is not valid for this project.');
+  if (record.pngPath !== pngPath) throw new Error('The recorded artwork path is not valid for this project.');
   await access(resolve(workspaceDirectory, folder.path), constants.W_OK);
   await access(pngPath, constants.F_OK);
-  await access(svgPath, constants.F_OK);
-  await Promise.all([unlink(pngPath), unlink(svgPath)]);
+  await unlink(pngPath);
   await writeFile(historyFile, `${JSON.stringify(history.filter((entry) => entry !== record), null, 2)}\n`);
 }
 

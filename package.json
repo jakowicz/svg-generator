@@ -2,7 +2,7 @@
   "name": "svg-generator",
   "version": "0.1.0",
   "private": true,
-  "description": "Local queued PNG-to-SVG game artwork generator using Ollama and VTracer.",
+  "description": "Local queued PNG game artwork generator using Ollama.",
   "scripts": {
     "start": "node ./scripts/asset-forge.mjs"
   },
