@@ -11,7 +11,7 @@ import { access, readFile, readdir, rename, unlink, writeFile } from 'node:fs/pr
 import { constants } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { makeWhiteBackgroundTransparent } from './png-transparency.mjs';
+import { makeWhiteBackgroundTransparent, PNG_TRANSPARENCY_VERSION } from './png-transparency.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceDirectory = resolve(process.cwd());
@@ -263,7 +263,7 @@ async function forgeAsset({ outputDirectory, name, subjectName = name, style = p
   const { pngData: transparentPng } = makeWhiteBackgroundTransparent(pngData);
   reportProgress('Saving the transparent PNG into the selected folder…', 4, 'save');
   await writeFile(pngPath, transparentPng);
-  return { pngPath, model, assetName, style, folderId: folder.id, animationState, transparentBackground: true };
+  return { pngPath, model, assetName, style, folderId: folder.id, animationState, transparentBackground: true, transparencyVersion: PNG_TRANSPARENCY_VERSION };
 }
 
 const jobs = new Map();
@@ -378,7 +378,7 @@ async function loadPersistedJobs() {
           await access(pngPath, constants.R_OK);
           job.status = 'complete';
           job.stage = 'PNG saved before the local Forge restart.';
-          job.result = { pngPath, model: job.payload.model ?? defaultModel, assetName, style: job.payload.style ?? projectConfig.styles[0].id, folderId: folder.id, animationState: job.payload.animationState };
+          job.result = { pngPath, model: job.payload.model ?? defaultModel, assetName, style: job.payload.style ?? projectConfig.styles[0].id, folderId: folder.id, animationState: job.payload.animationState, transparencyVersion: PNG_TRANSPARENCY_VERSION };
           job.finishedAt = new Date().toISOString();
           await recordArtwork(job.result, name);
         } catch {
@@ -418,7 +418,7 @@ async function loadArtworkHistory() {
 
 async function recordArtwork(result, name) {
   const history = await loadArtworkHistory();
-  const record = { name, assetName: result.assetName, folderId: result.folderId, pngPath: result.pngPath, style: result.style, model: result.model, animationState: result.animationState, createdAt: new Date().toISOString() };
+  const record = { name, assetName: result.assetName, folderId: result.folderId, pngPath: result.pngPath, style: result.style, model: result.model, animationState: result.animationState, transparencyVersion: result.transparencyVersion ?? PNG_TRANSPARENCY_VERSION, createdAt: new Date().toISOString() };
   await writeFile(historyFile, `${JSON.stringify([record, ...history.filter((entry) => entry.pngPath !== record.pngPath)], null, 2)}\n`);
 }
 

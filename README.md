@@ -14,7 +14,7 @@ the machine.
 Forge generates against a white canvas, then removes neutral white backdrop
 pixels anywhere in the image plus the light anti-aliasing matte at the outer
 edge. The saved PNG is therefore ready for Unity sprite import without white
-canvas islands trapped inside the artwork.
+canvas islands trapped inside the artwork or a light outer fringe.
 
 To update previously generated Forge artwork, run this from the target game
 root:
@@ -24,6 +24,8 @@ node ./tools/svg-generator/scripts/make-recorded-pngs-transparent.mjs
 ```
 
 It changes only PNGs listed in that project’s Asset Forge history.
+Each recorded PNG is processed once per transparency-rule version, so rerunning
+the command does not repeatedly erode an already cleaned sprite.
 
 ## What the browser tool does
 
