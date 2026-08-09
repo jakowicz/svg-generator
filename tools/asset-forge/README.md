@@ -1,8 +1,11 @@
-# Asset Forge project setup
+# Asset Forge configuration reference
 
-Asset Forge is portable. Copy `scripts/asset-forge.mjs`,
-`scripts/vectorize-with-vtracer.py`, and `tools/asset-forge/` into a project,
-then run it from that project's root with:
+For the complete installation and usage guide, see the repository
+[README](../../README.md). This page is the concise reference for configuring
+an individual game project.
+
+Asset Forge runs from the target game's root. When installed as a submodule,
+add this script to the game's `package.json`:
 
 ```json
 {
