@@ -7,7 +7,7 @@
  * text and output paths cannot become shell commands.
  */
 import { createServer } from 'node:http';
-import { access, copyFile, readFile, readdir } from 'node:fs/promises';
+import { access, readFile, readdir, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
@@ -242,12 +242,6 @@ async function generateTextWithOllama(model, prompt, onActivity) {
   return generated;
 }
 
-function generatedPngPath(output) {
-  const match = stripTerminalCodes(output).match(/Image saved to:\s*(.+?\.png)\s*$/mi);
-  if (!match) throw new Error('Ollama finished but did not report a PNG path. Update Ollama and make sure image generation is available, then try again.');
-  return match[1].trim();
-}
-
 async function createArtworkPrompt({ name, outputDirectory, style = projectConfig.styles[0].id }, onActivity) {
   const assetName = assetFileName(name);
   const category = artworkCategory(outputDirectory);
@@ -256,6 +250,24 @@ async function createArtworkPrompt({ name, outputDirectory, style = projectConfi
   const prompt = stripTerminalCodes(await generateTextWithOllama(promptModel, instruction, onActivity)).trim();
   if (!prompt) throw new Error('Gemma returned an empty prompt. Make sure gemma4:12b is installed and try again.');
   return { prompt, model: promptModel, assetName, category, style };
+}
+
+async function generateImageWithOllama(model, prompt, onActivity) {
+  let response;
+  try {
+    response = await fetch(`${ollamaApi}/api/generate`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model, prompt, stream: false }),
+    });
+  } catch (error) {
+    throw new Error(`Could not reach Ollama at ${ollamaApi}. Start Ollama and try again. (${error.message})`);
+  }
+  const result = await response.json();
+  if (!response.ok) throw new Error(`Ollama could not generate an image with ${model}: ${result.error ?? 'Unknown error.'}`);
+  if (typeof result.image !== 'string' || !result.image) throw new Error(`Ollama completed ${model} without returning PNG image data.`);
+  onActivity?.();
+  return Buffer.from(result.image, 'base64');
 }
 
 async function forgeAsset({ outputDirectory, name, style = projectConfig.styles[0].id, model = defaultModel, overwrite = false }, reportProgress = () => {}, reportActivity = () => {}) {
@@ -278,11 +290,9 @@ async function forgeAsset({ outputDirectory, name, style = projectConfig.styles[
   reportProgress('Checking SVG conversion tools…', 2, 'tools');
   const vectorizer = await locateVectorizer();
   reportProgress(`Running Flux (${model})…`, 3, 'flux');
-  const flux = await run('ollama', ['run', model, promptResult.prompt], { onActivity: reportActivity });
-  const temporaryPng = generatedPngPath(`${flux.output}\n${flux.errorOutput}`);
-  await access(temporaryPng, constants.R_OK);
+  const pngData = await generateImageWithOllama(model, promptResult.prompt, reportActivity);
   reportProgress('Copying Flux PNG into the selected folder…', 4, 'copy');
-  await copyFile(temporaryPng, pngPath);
+  await writeFile(pngPath, pngData);
   reportProgress(`Converting PNG to SVG with ${vectorizer === 'cli' ? 'VTracer' : 'the Python VTracer binding'}…`, 5, 'vectorize');
   await vectorize(pngPath, svgPath, vectorizer, reportActivity);
   return { pngPath, svgPath, model, vectorizer, assetName, style };
