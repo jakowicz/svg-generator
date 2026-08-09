@@ -11,10 +11,10 @@ Name + output folder + style
 It runs entirely on your Mac or PC. Prompts and generated PNGs do not leave
 the machine.
 
-Forge generates against a white canvas, then removes the edge-connected white
-and light anti-aliasing matte. The saved PNG therefore has transparency around
-the artwork while retaining enclosed white highlights, ready for Unity sprite
-import.
+Forge generates against a white canvas, then removes neutral white backdrop
+pixels anywhere in the image plus the light anti-aliasing matte at the outer
+edge. The saved PNG is therefore ready for Unity sprite import without white
+canvas islands trapped inside the artwork.
 
 To update previously generated Forge artwork, run this from the target game
 root:

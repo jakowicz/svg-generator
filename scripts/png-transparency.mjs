@@ -14,7 +14,16 @@ function isEdgeMattePixel({ data }, pixel) {
   return darkest >= 190 && lightest - darkest <= 42;
 }
 
-/** Removes white anti-aliasing matte connected to the canvas edge, preserving enclosed white highlights. */
+function isWhiteBackdropIsland({ data }, pixel) {
+  const offset = pixel * 4;
+  if (data[offset + 3] === 0) return false;
+  const red = data[offset];
+  const green = data[offset + 1];
+  const blue = data[offset + 2];
+  return Math.min(red, green, blue) >= 235 && Math.max(red, green, blue) - Math.min(red, green, blue) <= 24;
+}
+
+/** Removes white backdrop islands anywhere, then strips the light anti-aliasing matte from the outer edge. */
 export function makeWhiteBackgroundTransparent(pngData) {
   let image;
   try {
@@ -28,6 +37,11 @@ export function makeWhiteBackgroundTransparent(pngData) {
   let head = 0;
   let tail = 0;
   let removedPixels = 0;
+  for (let pixel = 0; pixel < width * height; pixel += 1) {
+    if (!isWhiteBackdropIsland(image, pixel)) continue;
+    data[pixel * 4 + 3] = 0;
+    removedPixels += 1;
+  }
   const add = (pixel) => {
     if (visited[pixel] || !isEdgeMattePixel(image, pixel)) return;
     visited[pixel] = 1;
