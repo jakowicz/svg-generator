@@ -30,6 +30,10 @@ the target project. Refreshing the browser is safe. After restarting Forge,
 queued jobs resume in their original order; a job that had already saved its
 PNG is recovered as complete rather than generated twice.
 
+Each gallery card has **Regenerate PNG**. It queues a fresh Flux attempt with
+the same name, output folder, and style, while retaining the existing PNG until
+the replacement has been saved.
+
 Every request includes a square-canvas composition rule: the complete subject
 is centred, its longest dimension targets 88% of the canvas, and a 6% margin
 is reserved at every edge. This keeps generated assets consistently large

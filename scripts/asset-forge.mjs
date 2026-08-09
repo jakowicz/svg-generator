@@ -403,16 +403,18 @@ async function loadArtworkHistory() {
 
 async function recordArtwork(result, name) {
   const history = await loadArtworkHistory();
-  const record = { name, assetName: result.assetName, folderId: result.folderId, pngPath: result.pngPath, createdAt: new Date().toISOString() };
+  const record = { name, assetName: result.assetName, folderId: result.folderId, pngPath: result.pngPath, style: result.style, model: result.model, createdAt: new Date().toISOString() };
   await writeFile(historyFile, `${JSON.stringify([record, ...history.filter((entry) => entry.pngPath !== record.pngPath)], null, 2)}\n`);
 }
 
-function publicArtwork({ folder, assetName, name = assetName, pngPath, createdAt, origin }) {
+function publicArtwork({ folder, assetName, name = assetName, pngPath, style = projectConfig.styles[0].id, createdAt, origin }) {
   return {
     id: `${folder.id}:${assetName}`,
     name,
     assetName,
     pngPath,
+    outputDirectory: folder.path,
+    style,
     createdAt,
     origin,
     previewUrl: `/api/artwork/${encodeURIComponent(folder.id)}/${encodeURIComponent(assetName)}/preview.png`,
@@ -423,7 +425,7 @@ async function generatedArtwork() {
   const items = new Map();
   for (const entry of await loadArtworkHistory()) {
     const folder = projectConfig.outputFolders.find((candidate) => candidate.id === entry.folderId);
-    if (!folder || !assetNamePattern.test(entry.assetName ?? '')) continue;
+    if (!folder || !assetNamePattern.test(entry.assetName ?? '') || !projectConfig.styles.some((style) => style.id === (entry.style ?? projectConfig.styles[0].id))) continue;
     try {
       await access(entry.pngPath, constants.R_OK);
       items.set(`${folder.id}:${entry.assetName}`, publicArtwork({ ...entry, folder, origin: 'recorded' }));
