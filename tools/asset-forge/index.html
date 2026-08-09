@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Emberhold Asset Forge</title>
+    <style>
+      :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #17231f; color: #f5e8bd; }
+      * { box-sizing: border-box; }
+      body { min-height: 100vh; margin: 0; padding: clamp(20px, 5vw, 72px); background: radial-gradient(circle at 15% 0%, #5b5533 0, transparent 27%), radial-gradient(circle at 90% 90%, #274a48 0, transparent 31%), #17231f; }
+      main { width: min(100%, 960px); margin: auto; }
+      header { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; margin-bottom: 38px; }
+      .sigil { display: grid; width: 62px; height: 62px; place-items: center; border: 2px solid #efce75; border-radius: 50%; box-shadow: inset 0 0 0 6px #283a30, 0 0 28px #d4a74d55; color: #ffdf82; font-size: 29px; }
+      h1 { margin: 0; font-size: clamp(28px, 5vw, 52px); letter-spacing: -.09em; } .eyebrow { margin: 0 0 5px; color: #9bbd8d; font-size: 11px; letter-spacing: .16em; }
+      .lead { max-width: 690px; margin: 8px 0 0; color: #c7cdae; line-height: 1.6; }
+      .forge { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 1px; overflow: hidden; border: 1px solid #87995d; background: #87995d; box-shadow: 10px 10px 0 #0d1512; }
+      form, aside { padding: clamp(18px, 4vw, 36px); background: #21342a; } aside { background: linear-gradient(150deg, #303323, #1c2b28); }
+      label { display: grid; gap: 8px; margin-bottom: 20px; color: #e9dfad; font-size: 12px; font-weight: 800; } label span { color: #9dbd8c; font-size: 10px; font-weight: 500; }
+      input, select { width: 100%; border: 1px solid #8b9c65; border-radius: 2px; padding: 12px; background: #15231d; color: #fff4ca; font: inherit; }
+      input:focus, select:focus { outline: 2px solid #f4ce70; outline-offset: 2px; }
+      .custom-folder[hidden] { display: none; }
+      .pair { display: grid; grid-template-columns: 1fr 1.25fr; gap: 14px; } .check { display: flex; gap: 9px; align-items: center; color: #cbd7af; font-size: 11px; } .check input { width: auto; }
+      button { width: 100%; margin-top: 18px; padding: 15px; border: 1px solid #ffe194; background: linear-gradient(120deg, #79573a, #a6753e); box-shadow: 4px 4px 0 #101813; color: #fff6d3; font: 800 13px ui-monospace, monospace; letter-spacing: .04em; cursor: pointer; } button:hover { filter: brightness(1.14); } button:disabled { cursor: wait; filter: grayscale(.5); opacity: .72; }
+      aside h2 { margin: 0 0 18px; color: #ffe69d; font-size: 15px; } .step { display: grid; grid-template-columns: 26px 1fr; gap: 10px; margin: 16px 0; color: #cbd2b0; font-size: 11px; line-height: 1.45; } .step b { display: grid; width: 24px; height: 24px; place-items: center; border: 1px solid #acbe75; border-radius: 50%; color: #fff0ae; } code { color: #f5d77a; }
+      .status { display: block; clear: both; width: 100%; min-height: 52px; margin-top: 20px; padding: 12px; border-left: 3px solid #7da568; background: #17251ecc; color: #dce5c0; font-size: 11px; line-height: 1.5; white-space: pre-wrap; } .status.error { border-color: #dd7563; color: #ffd0bf; } .status.success { border-color: #e9c263; color: #fff0bd; }
+      .style-prompt { margin: -10px 0 20px; padding: 10px 12px; border-left: 2px solid #d4ae5b; background: #17251e; color: #d9e0bd; font-size: 10px; line-height: 1.55; } .style-prompt b { color: #ffe69d; }
+      .jobs { margin-top: 28px; border: 1px solid #87995d; background: #17231f; box-shadow: 10px 10px 0 #0d1512; } .jobs header { display: flex; justify-content: space-between; gap: 16px; margin: 0; padding: 13px 16px; border-bottom: 1px solid #87995d; background: #283a30; } .jobs h2 { margin: 0; color: #ffe69d; font-size: 13px; } .jobs header span { color: #aabf92; font-size: 10px; }
+      .job-list { display: grid; gap: 1px; background: #637957; } .empty-jobs { padding: 22px 16px; background: #1a2a22; color: #abc09a; font-size: 11px; }
+      .job { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: start; padding: 14px 16px; background: #1d3027; } .job.running { background: linear-gradient(90deg, #243b2d, #1d3027); } .job.failed { background: #3b2926; } .job.complete { background: #223529; }
+      .job-title { margin: 0 0 6px; color: #fff0bd; font-size: 12px; } .job-meta, .job-paths, .job-error { margin: 0; color: #b8caa8; font-size: 10px; line-height: 1.55; word-break: break-word; } .job-error { color: #ffd1c3; } .job-paths { color: #e9d98d; white-space: pre-wrap; }
+      .badge { display: inline-block; padding: 3px 6px; border: 1px solid #94b377; color: #dce9b2; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; } .badge.queued { color: #e8db99; border-color: #b7a860; } .badge.running { color: #d5f0a7; border-color: #8bb76b; animation: signal 1.2s steps(2, end) infinite; } .badge.complete { color: #ffedab; border-color: #d4ae5b; } .badge.failed { color: #ffd0c2; border-color: #dd7563; }
+      .preview { position: relative; display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid #d4ae5b; background: conic-gradient(#263d30 25%, #1a2c23 0 50%, #263d30 0 75%, #1a2c23 0); background-size: 12px 12px; color: #ffedab; font-size: 18px; cursor: zoom-in; } .preview img { display: none; position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 4; width: min(300px, 60vw); max-height: 300px; object-fit: contain; border: 2px solid #f1cd70; background: #17231f; box-shadow: 8px 8px 0 #0d1512; } .preview:hover img, .preview:focus-within img { display: block; }
+      @keyframes signal { 50% { opacity: .55; } }
+      @media (max-width: 720px) { body { padding: 20px; } .forge { grid-template-columns: 1fr; } .pair { grid-template-columns: 1fr; } header { grid-template-columns: 1fr; } .sigil { display: none; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header><div class="sigil" aria-hidden="true">✦</div><div><p class="eyebrow">LOCAL ARTWORK PIPELINE</p><h1>Asset Forge</h1><p class="lead">Turn an artwork name into a saved PNG and a traceable SVG. Generation and files stay on this Mac.</p></div></header>
+      <section class="forge">
+        <form id="forge-form">
+          <div class="pair"><label>Artwork name <span>The file name is created automatically.</span><input name="name" required placeholder="Minotaur" /></label><label>Output folder <span>Detected from this project and used to tell Gemma what to create.</span><select name="outputDirectory" required disabled><option>Loading project folders…</option></select></label></div>
+          <label>Artwork style <span>The selected style guides Gemma’s generated Flux prompt.</span><select name="style" required disabled><option>Loading project styles…</option></select></label>
+          <p id="style-prompt" class="style-prompt"><b>Style instructions sent to Gemma:</b> Emberhold's current 2D retro fantasy RPG style: bold dark outlines, readable graphic shapes, restrained rich colours, and a hand-painted pixel-inspired feel without pixel blocks.</p>
+          <button id="submit" type="submit">Generate PNG and forge SVG</button>
+          <output id="status" class="status" aria-live="polite"></output>
+        </form>
+        <aside><h2>What happens</h2><div class="step"><b>1</b><span>Gemma 4 12B creates a Flux prompt from the name, folder, and selected style.</span></div><div class="step"><b>2</b><span>Runs <code>ollama run</code> with your selected local Flux model.</span></div><div class="step"><b>3</b><span>Copies Ollama’s PNG, then VTracer creates editable vector paths.</span></div><div class="step"><b>4</b><span>Saves a clean lowercase file name such as <code>minotaur.png</code> and <code>.svg</code>.</span></div><p class="status">Requires <code>gemma4:12b</code>, your Flux model, and either the <code>vtracer</code> CLI or Python package.<br><br>Python install: <code>python3 -m pip install vtracer</code></p></aside>
+      </section>
+      <section class="jobs" aria-labelledby="jobs-heading"><header><h2 id="jobs-heading">Forge queue</h2><span>One local model job runs at a time.</span></header><div class="job-list" id="job-list"><p class="empty-jobs">No jobs yet. Queue an artwork generation to begin.</p></div></section>
+    </main>
+    <script>
+      const form = document.querySelector('#forge-form'); const button = document.querySelector('#submit'); const status = document.querySelector('#status'); const folder = form.elements.outputDirectory; const style = form.elements.style; const stylePrompt = document.querySelector('#style-prompt'); const jobList = document.querySelector('#job-list'); let knownJobs = []; let styles = new Map();
+      const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
+      function renderStylePrompt() { const selected = styles.get(style.value); if (selected) stylePrompt.innerHTML = `<b>Style instructions sent to Gemma:</b> ${escapeHtml(selected.prompt)}.`; }
+      style.addEventListener('change', renderStylePrompt);
+      async function loadProjectConfiguration() {
+        try { const response = await fetch('/api/config', { cache: 'no-store' }); if (!response.ok) throw new Error('Could not load this project’s Asset Forge configuration.'); const result = await response.json(); styles = new Map(result.styles.map((entry) => [entry.id, entry])); style.replaceChildren(...result.styles.map((entry) => { const option = document.createElement('option'); option.value = entry.id; option.textContent = entry.label; return option; })); folder.replaceChildren(...result.outputFolders.map((entry) => { const option = document.createElement('option'); option.value = entry.path; option.textContent = entry.label; return option; })); style.disabled = false; folder.disabled = false; renderStylePrompt(); }
+        catch (error) { button.disabled = true; status.className = 'status error'; status.textContent = error instanceof Error ? error.message : 'Could not load this project’s Asset Forge configuration.'; }
+      }
+      const preview = (job) => job.kind === 'forge' && job.status === 'complete' ? `<div class="preview" title="Hover to preview saved PNG" tabindex="0">◉<img src="/api/jobs/${job.id}/preview.png" alt="Preview of ${escapeHtml(job.name)}" /></div>` : '';
+      function renderJobs(jobs) {
+        knownJobs = jobs;
+        if (!jobs.length) { jobList.innerHTML = '<p class="empty-jobs">No jobs yet. Queue an artwork generation to begin.</p>'; return; }
+        jobList.innerHTML = jobs.map((job) => {
+          const type = 'Asset forge';
+          const result = job.result ?? {}; const paths = result.pngPath ? `PNG  ${result.pngPath}\nSVG  ${result.svgPath}` : '';
+          return `<article class="job ${job.status}"><div><p class="job-title">${escapeHtml(type)} · ${escapeHtml(job.name)}</p><p class="job-meta">${escapeHtml(job.stage)}</p>${paths ? `<p class="job-paths">${escapeHtml(paths)}</p>` : ''}${job.error ? `<p class="job-error">${escapeHtml(job.error)}</p>` : ''}</div><div><span class="badge ${job.status}">${escapeHtml(job.status)}</span>${preview(job)}</div></article>`;
+        }).join('');
+      }
+      async function refreshJobs() {
+        try { const response = await fetch('/api/jobs', { cache: 'no-store' }); if (!response.ok) throw new Error('Could not read the forge queue.'); const result = await response.json(); renderJobs(result.jobs); }
+        catch (error) { status.className = 'status error'; status.textContent = error instanceof Error ? error.message : 'Could not read the forge queue.'; }
+      }
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault(); button.disabled = true; status.className = 'status'; status.textContent = 'Flux job queued. It will start as soon as the current job finishes.';
+        const values = Object.fromEntries(new FormData(form)); values.overwrite = Boolean(values.overwrite);
+        try { const response = await fetch('/api/forge', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(values) }); const result = await response.json(); if (!response.ok) throw new Error(result.error); status.className = 'status success'; status.textContent = `Asset forge job #${result.job.id} queued. Progress and saved files appear below.`; await refreshJobs(); }
+        catch (error) { status.className = 'status error'; status.textContent = error instanceof Error ? error.message : 'Asset generation failed.'; }
+        finally { button.disabled = false; }
+      });
+      void loadProjectConfiguration(); void refreshJobs(); window.setInterval(refreshJobs, 900);
+    </script>
+  </body>
+</html>
