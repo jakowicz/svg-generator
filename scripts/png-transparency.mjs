@@ -1,11 +1,13 @@
 import { PNG } from 'pngjs';
 
-function isNearWhite({ data }, pixel) {
+function isEdgeMattePixel({ data }, pixel) {
   const offset = pixel * 4;
-  return data[offset + 3] > 0 && data[offset] >= 240 && data[offset + 1] >= 240 && data[offset + 2] >= 240;
+  const alpha = data[offset + 3];
+  if (alpha === 0) return true;
+  return data[offset] >= 220 && data[offset + 1] >= 220 && data[offset + 2] >= 220;
 }
 
-/** Removes only the near-white area connected to the canvas edge, preserving internal white highlights. */
+/** Removes white anti-aliasing matte connected to the canvas edge, preserving enclosed white highlights. */
 export function makeWhiteBackgroundTransparent(pngData) {
   let image;
   try {
@@ -20,7 +22,7 @@ export function makeWhiteBackgroundTransparent(pngData) {
   let tail = 0;
   let removedPixels = 0;
   const add = (pixel) => {
-    if (visited[pixel] || !isNearWhite(image, pixel)) return;
+    if (visited[pixel] || !isEdgeMattePixel(image, pixel)) return;
     visited[pixel] = 1;
     pending[tail++] = pixel;
   };
@@ -29,14 +31,21 @@ export function makeWhiteBackgroundTransparent(pngData) {
   for (let y = 1; y < height - 1; y += 1) { add(y * width); add(y * width + width - 1); }
   while (head < tail) {
     const pixel = pending[head++];
-    data[pixel * 4 + 3] = 0;
-    removedPixels += 1;
+    const offset = pixel * 4;
+    if (data[offset + 3] !== 0) {
+      data[offset + 3] = 0;
+      removedPixels += 1;
+    }
     const x = pixel % width;
     const y = Math.floor(pixel / width);
-    if (x > 0) add(pixel - 1);
-    if (x < width - 1) add(pixel + 1);
-    if (y > 0) add(pixel - width);
-    if (y < height - 1) add(pixel + width);
+    for (let yOffset = -1; yOffset <= 1; yOffset += 1) {
+      for (let xOffset = -1; xOffset <= 1; xOffset += 1) {
+        if (xOffset === 0 && yOffset === 0) continue;
+        const nextX = x + xOffset;
+        const nextY = y + yOffset;
+        if (nextX >= 0 && nextX < width && nextY >= 0 && nextY < height) add(nextY * width + nextX);
+      }
+    }
   }
   return { pngData: PNG.sync.write(image), removedPixels };
 }
