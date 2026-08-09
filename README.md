@@ -34,6 +34,11 @@ Each gallery card has **Regenerate PNG**. It queues a fresh Flux attempt with
 the same name, output folder, and style, while retaining the existing PNG until
 the replacement has been saved.
 
+Original artwork in the **Summons** folder also has **Create 3 animation
+poses**. It queues `charge`, `attack`, and `exit` PNGs using the configured
+Flux 9B model and saves them beside the original—for example,
+`minotaur-charge.png`, `minotaur-attack.png`, and `minotaur-exit.png`.
+
 Every request includes a square-canvas composition rule: the complete subject
 is centred, its longest dimension targets 88% of the canvas, and a 6% margin
 is reserved at every edge. This keeps generated assets consistently large

@@ -33,6 +33,11 @@ const defaultStyle = {
 const assetRootCandidates = ['public/assets/svg', 'assets/svg', 'public/assets', 'assets', 'src/assets'];
 const backgroundRequirement = 'Hard requirement: use a plain, solid, opaque pure white (#FFFFFF) background. Do not use transparency, gradients, scenery, frames, floor shadows, or environmental background elements.';
 const compositionRequirement = 'Hard requirement: compose for a square game-asset canvas. Centre the complete subject and make its longest dimension fill approximately 88% of the canvas. Keep a consistent 6% safe margin on every side: no part of the subject may touch, cross, or be cropped by an image edge. The white background must extend to every canvas edge.';
+const summonAnimationStates = [
+  { id: 'charge', label: 'Charge', direction: 'a magical charging pose: gathering energy, braced stance, focused silhouette, ready to attack' },
+  { id: 'attack', label: 'Attack', direction: 'a decisive attack pose at the moment of release or impact, dynamic but fully contained in the square canvas' },
+  { id: 'exit', label: 'Exit', direction: 'an exit pose: energy dissipating as the summon departs, calm and readable rather than an attack pose' },
+];
 
 function assetFileName(name) {
   if (typeof name !== 'string' || !name.trim()) throw new Error('Enter a name for the artwork.');
@@ -55,6 +60,12 @@ function artworkNames(value) {
   const fileNames = names.map(assetFileName);
   if (new Set(fileNames).size !== fileNames.length) throw new Error('Each artwork name must produce a unique file name.');
   return names;
+}
+
+function summonAnimationState(stateId) {
+  const state = summonAnimationStates.find((candidate) => candidate.id === stateId);
+  if (!state) throw new Error('Summon animation state is invalid.');
+  return state;
 }
 
 function artworkCategory(outputDirectory) {
@@ -200,11 +211,12 @@ async function generateTextWithOllama(model, prompt, onActivity) {
   return generated;
 }
 
-async function createArtworkPrompt({ name, outputDirectory, style = projectConfig.styles[0].id }, onActivity) {
+async function createArtworkPrompt({ name, subjectName = name, outputDirectory, style = projectConfig.styles[0].id, animationState }, onActivity) {
   const assetName = assetFileName(name);
   const category = artworkCategory(outputDirectory);
   const styleDescription = artworkStyle(style);
-  const instruction = `You write concise, production-ready image prompts. Create a single Flux image-generation prompt for "${name.trim()}", which is ${category}. Use this visual style: ${styleDescription}. Describe only that named ${category}; preserve a clean, centred silhouette at game UI size, no text, logo, frame, UI, scenery, or cropped parts. ${compositionRequirement} ${backgroundRequirement} Do not mention SVG, vectorisation, Flux, or this instruction. Return only the final prompt in one paragraph.`;
+  const stateDirection = animationState ? `This is the ${summonAnimationState(animationState).label.toLowerCase()} animation pose for the existing summon: ${summonAnimationState(animationState).direction}. Preserve the summon’s identity, proportions, palette, and visual style across all of its animation poses.` : '';
+  const instruction = `You write concise, production-ready image prompts. Create a single Flux image-generation prompt for "${subjectName.trim()}", which is ${category}. Use this visual style: ${styleDescription}. Describe only that named ${category}; preserve a clean, centred silhouette at game UI size, no text, logo, frame, UI, scenery, or cropped parts. ${stateDirection} ${compositionRequirement} ${backgroundRequirement} Do not mention SVG, vectorisation, Flux, or this instruction. Return only the final prompt in one paragraph.`;
   const prompt = stripTerminalCodes(await generateTextWithOllama(promptModel, instruction, onActivity)).trim();
   if (!prompt) throw new Error('Gemma returned an empty prompt. Make sure gemma4:12b is installed and try again.');
   return { prompt, model: promptModel, assetName, category, style };
@@ -228,7 +240,7 @@ async function generateImageWithOllama(model, prompt, onActivity) {
   return Buffer.from(result.image, 'base64');
 }
 
-async function forgeAsset({ outputDirectory, name, style = projectConfig.styles[0].id, model = defaultModel, overwrite = false }, reportProgress = () => {}, reportActivity = () => {}) {
+async function forgeAsset({ outputDirectory, name, subjectName = name, style = projectConfig.styles[0].id, model = defaultModel, overwrite = false, animationState }, reportProgress = () => {}, reportActivity = () => {}) {
   const assetName = assetFileName(name);
   const folder = selectedOutputFolder(outputDirectory);
   if (typeof model !== 'string' || !/^[-/a-zA-Z0-9_.:]+$/.test(model)) throw new Error('Model name is invalid.');
@@ -243,12 +255,12 @@ async function forgeAsset({ outputDirectory, name, style = projectConfig.styles[
   }
 
   reportProgress(`Running Gemma 4 12B for the ${style} style prompt…`, 1, 'gemma');
-  const promptResult = await createArtworkPrompt({ name, outputDirectory, style }, reportActivity);
+  const promptResult = await createArtworkPrompt({ name, subjectName, outputDirectory, style, animationState }, reportActivity);
   reportProgress(`Running Flux (${model})…`, 2, 'flux');
   const pngData = await generateImageWithOllama(model, `${promptResult.prompt}\n\n${compositionRequirement}\n${backgroundRequirement}`, reportActivity);
   reportProgress('Saving Flux PNG into the selected folder…', 3, 'save');
   await writeFile(pngPath, pngData);
-  return { pngPath, model, assetName, style, folderId: folder.id };
+  return { pngPath, model, assetName, style, folderId: folder.id, animationState };
 }
 
 const jobs = new Map();
@@ -363,7 +375,7 @@ async function loadPersistedJobs() {
           await access(pngPath, constants.R_OK);
           job.status = 'complete';
           job.stage = 'PNG saved before the local Forge restart.';
-          job.result = { pngPath, model: job.payload.model ?? defaultModel, assetName, style: job.payload.style ?? projectConfig.styles[0].id, folderId: folder.id };
+          job.result = { pngPath, model: job.payload.model ?? defaultModel, assetName, style: job.payload.style ?? projectConfig.styles[0].id, folderId: folder.id, animationState: job.payload.animationState };
           job.finishedAt = new Date().toISOString();
           await recordArtwork(job.result, name);
         } catch {
@@ -403,18 +415,20 @@ async function loadArtworkHistory() {
 
 async function recordArtwork(result, name) {
   const history = await loadArtworkHistory();
-  const record = { name, assetName: result.assetName, folderId: result.folderId, pngPath: result.pngPath, style: result.style, model: result.model, createdAt: new Date().toISOString() };
+  const record = { name, assetName: result.assetName, folderId: result.folderId, pngPath: result.pngPath, style: result.style, model: result.model, animationState: result.animationState, createdAt: new Date().toISOString() };
   await writeFile(historyFile, `${JSON.stringify([record, ...history.filter((entry) => entry.pngPath !== record.pngPath)], null, 2)}\n`);
 }
 
-function publicArtwork({ folder, assetName, name = assetName, pngPath, style = projectConfig.styles[0].id, createdAt, origin }) {
+function publicArtwork({ folder, assetName, name = assetName, pngPath, style = projectConfig.styles[0].id, animationState, createdAt, origin }) {
   return {
     id: `${folder.id}:${assetName}`,
     name,
     assetName,
     pngPath,
+    folderId: folder.id,
     outputDirectory: folder.path,
     style,
+    animationState,
     createdAt,
     origin,
     previewUrl: `/api/artwork/${encodeURIComponent(folder.id)}/${encodeURIComponent(assetName)}/preview.png`,
@@ -468,6 +482,36 @@ const server = createServer(async (request, response) => {
       json(response, 200, { artwork: await generatedArtwork() });
       return;
     }
+    const summonAnimationMatch = request.method === 'POST' && request.url?.match(/^\/api\/summons\/([a-z0-9-]+)\/([a-z0-9-]+)\/animation-poses$/);
+    if (summonAnimationMatch) {
+      const [folderId, assetName] = summonAnimationMatch.slice(1);
+      const folder = projectConfig.outputFolders.find((candidate) => candidate.id === folderId);
+      if (!folder || folder.id !== 'summons') throw new Error('Animation poses can only be created for recorded summon artwork.');
+      const record = (await loadArtworkHistory()).find((entry) => entry.folderId === folderId && entry.assetName === assetName && !entry.animationState);
+      if (!record) throw new Error('The original recorded summon artwork was not found.');
+      const style = record.style ?? projectConfig.styles[0].id;
+      artworkStyle(style);
+      const payloads = summonAnimationStates.map((state) => ({
+        name: `${record.name} ${state.label}`,
+        subjectName: record.name,
+        outputDirectory: folder.path,
+        style,
+        model: defaultModel,
+        animationState: state.id,
+      }));
+      for (const payload of payloads) {
+        const pngPath = resolve(workspaceDirectory, folder.path, `${assetFileName(payload.name)}.png`);
+        try {
+          await access(pngPath, constants.F_OK);
+          throw new Error(`${pngPath} already exists. Regenerate that pose from its gallery card instead.`);
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
+      }
+      const queuedJobs = await queueJobs('forge', payloads);
+      json(response, 202, { jobs: queuedJobs, states: summonAnimationStates.map((state) => state.id) });
+      return;
+    }
     const deleteArtworkMatch = request.method === 'DELETE' && request.url?.match(/^\/api\/artwork\/([a-z0-9-]+)\/([a-z0-9-]+)$/);
     if (deleteArtworkMatch) {
       const payload = await requestBody(request);
@@ -481,6 +525,7 @@ const server = createServer(async (request, response) => {
       const names = artworkNames(payload.name);
       selectedOutputFolder(payload.outputDirectory);
       artworkStyle(payload.style ?? projectConfig.styles[0].id);
+      if (payload.animationState) summonAnimationState(payload.animationState);
       const queuedJobs = await queueJobs('forge', names.map((name) => ({ ...payload, name })));
       json(response, 202, { jobs: queuedJobs });
       return;
