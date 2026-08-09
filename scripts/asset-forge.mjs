@@ -11,6 +11,7 @@ import { access, readFile, readdir, rename, unlink, writeFile } from 'node:fs/pr
 import { constants } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PNG } from 'pngjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceDirectory = resolve(process.cwd());
@@ -28,7 +29,7 @@ const assetNamePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const defaultStyle = {
   id: 'default-game',
   label: 'Default game artwork',
-  prompt: 'clean, readable 2D fantasy game artwork with strong silhouettes, balanced colours, and a transparent background',
+  prompt: 'clean, readable 2D fantasy game artwork with strong silhouettes, balanced colours, and a plain white working canvas that Asset Forge converts to transparency',
 };
 const assetRootCandidates = ['public/assets/svg', 'assets/svg', 'public/assets', 'assets', 'src/assets'];
 const backgroundRequirement = 'Hard requirement: use a plain, solid, opaque pure white (#FFFFFF) background. Do not use transparency, gradients, scenery, frames, floor shadows, or environmental background elements.';
@@ -66,6 +67,45 @@ function summonAnimationState(stateId) {
   const state = summonAnimationStates.find((candidate) => candidate.id === stateId);
   if (!state) throw new Error('Summon animation state is invalid.');
   return state;
+}
+
+function isNearWhite({ data }, pixel) {
+  const offset = pixel * 4;
+  return data[offset + 3] > 0 && data[offset] >= 240 && data[offset + 1] >= 240 && data[offset + 2] >= 240;
+}
+
+/** Removes only the near-white area connected to the canvas edge, preserving internal white highlights. */
+function makeWhiteBackgroundTransparent(pngData) {
+  let image;
+  try {
+    image = PNG.sync.read(pngData);
+  } catch (error) {
+    throw new Error(`Flux returned an unreadable PNG: ${error.message}`);
+  }
+  const { width, height, data } = image;
+  const visited = new Uint8Array(width * height);
+  const pending = new Int32Array(width * height);
+  let head = 0;
+  let tail = 0;
+  const add = (pixel) => {
+    if (visited[pixel] || !isNearWhite(image, pixel)) return;
+    visited[pixel] = 1;
+    pending[tail++] = pixel;
+  };
+
+  for (let x = 0; x < width; x += 1) { add(x); add((height - 1) * width + x); }
+  for (let y = 1; y < height - 1; y += 1) { add(y * width); add(y * width + width - 1); }
+  while (head < tail) {
+    const pixel = pending[head++];
+    data[pixel * 4 + 3] = 0;
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    if (x > 0) add(pixel - 1);
+    if (x < width - 1) add(pixel + 1);
+    if (y > 0) add(pixel - width);
+    if (y < height - 1) add(pixel + width);
+  }
+  return PNG.sync.write(image);
 }
 
 function artworkCategory(outputDirectory) {
@@ -258,9 +298,11 @@ async function forgeAsset({ outputDirectory, name, subjectName = name, style = p
   const promptResult = await createArtworkPrompt({ name, subjectName, outputDirectory, style, animationState }, reportActivity);
   reportProgress(`Running Flux (${model})…`, 2, 'flux');
   const pngData = await generateImageWithOllama(model, `${promptResult.prompt}\n\n${compositionRequirement}\n${backgroundRequirement}`, reportActivity);
-  reportProgress('Saving Flux PNG into the selected folder…', 3, 'save');
-  await writeFile(pngPath, pngData);
-  return { pngPath, model, assetName, style, folderId: folder.id, animationState };
+  reportProgress('Removing the white background for Unity-ready transparency…', 3, 'transparent');
+  const transparentPng = makeWhiteBackgroundTransparent(pngData);
+  reportProgress('Saving the transparent PNG into the selected folder…', 4, 'save');
+  await writeFile(pngPath, transparentPng);
+  return { pngPath, model, assetName, style, folderId: folder.id, animationState, transparentBackground: true };
 }
 
 const jobs = new Map();
@@ -300,7 +342,7 @@ async function queueJobs(kind, payloads) {
     status: 'queued',
     stage: 'Waiting for the previous job…',
     step: 0,
-    totalSteps: 3,
+    totalSteps: 4,
     createdAt: now,
     updatedAt: now,
     payload,
@@ -366,7 +408,7 @@ async function loadPersistedJobs() {
         id: String(savedJob.id),
         name,
         status,
-        totalSteps: 3,
+        totalSteps: 4,
         payload: { ...savedJob.payload, name },
       };
       if (status === 'running') {

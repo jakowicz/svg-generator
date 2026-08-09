@@ -11,6 +11,11 @@ Name + output folder + style
 It runs entirely on your Mac or PC. Prompts and generated PNGs do not leave
 the machine.
 
+Forge generates against a white canvas, then removes only the near-white area
+connected to the image edge. The saved PNG therefore has transparency around
+the artwork while retaining internal white highlights, ready for Unity sprite
+import.
+
 ## What the browser tool does
 
 Open the local Forge page, enter an artwork name such as **Minotaur**, choose
