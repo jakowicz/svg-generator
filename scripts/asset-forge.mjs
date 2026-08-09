@@ -7,7 +7,7 @@
  * text and output paths cannot become shell commands.
  */
 import { createServer } from 'node:http';
-import { access, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
@@ -404,6 +404,23 @@ async function generatedArtwork() {
   return [...items.values()].sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
 }
 
+async function deleteRecordedArtwork(folderId, assetName) {
+  const folder = projectConfig.outputFolders.find((candidate) => candidate.id === folderId);
+  if (!folder || !assetNamePattern.test(assetName)) throw new Error('Recorded artwork was not found.');
+  const history = await loadArtworkHistory();
+  const record = history.find((entry) => entry.folderId === folderId && entry.assetName === assetName);
+  if (!record) throw new Error('Only artwork recorded by Forge can be deleted here.');
+
+  const pngPath = resolve(workspaceDirectory, folder.path, `${assetName}.png`);
+  const svgPath = resolve(workspaceDirectory, folder.path, `${assetName}.svg`);
+  if (record.pngPath !== pngPath || record.svgPath !== svgPath) throw new Error('The recorded artwork path is not valid for this project.');
+  await access(resolve(workspaceDirectory, folder.path), constants.W_OK);
+  await access(pngPath, constants.F_OK);
+  await access(svgPath, constants.F_OK);
+  await Promise.all([unlink(pngPath), unlink(svgPath)]);
+  await writeFile(historyFile, `${JSON.stringify(history.filter((entry) => entry !== record), null, 2)}\n`);
+}
+
 const server = createServer(async (request, response) => {
   try {
     if (request.method === 'GET' && request.url === '/') {
@@ -421,6 +438,14 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === 'GET' && request.url === '/api/artwork') {
       json(response, 200, { artwork: await generatedArtwork() });
+      return;
+    }
+    const deleteArtworkMatch = request.method === 'DELETE' && request.url?.match(/^\/api\/artwork\/([a-z0-9-]+)\/([a-z0-9-]+)$/);
+    if (deleteArtworkMatch) {
+      const payload = await requestBody(request);
+      if (payload.confirmed !== true) throw new Error('Confirm deletion before removing generated artwork.');
+      await deleteRecordedArtwork(deleteArtworkMatch[1], deleteArtworkMatch[2]);
+      json(response, 200, { deleted: true });
       return;
     }
     if (request.method === 'POST' && request.url === '/api/forge') {
