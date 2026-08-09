@@ -20,6 +20,7 @@ const projectConfigFile = resolve(workspaceDirectory, 'asset-forge.config.json')
 const pythonVectorizerFile = resolve(scriptDirectory, 'vectorize-with-vtracer.py');
 const host = '127.0.0.1';
 const port = Number(process.env.ASSET_FORGE_PORT ?? 4177);
+const ollamaApi = 'http://127.0.0.1:11434';
 const defaultModel = 'x/flux2-klein:9b';
 const promptModel = 'gemma4:12b';
 const assetNamePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -201,6 +202,46 @@ function stripTerminalCodes(value) {
   return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
 }
 
+async function generateTextWithOllama(model, prompt, onActivity) {
+  let response;
+  try {
+    response = await fetch(`${ollamaApi}/api/generate`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model, prompt, stream: true }),
+    });
+  } catch (error) {
+    throw new Error(`Could not reach Ollama at ${ollamaApi}. Start Ollama and try again. (${error.message})`);
+  }
+  if (!response.ok || !response.body) throw new Error(`Ollama could not start ${model}: ${await response.text()}`);
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let generated = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const event = JSON.parse(line);
+        generated += event.response ?? '';
+        onActivity?.();
+      } catch { /* Ignore any incomplete/non-JSON transport line. */ }
+    }
+  }
+  if (buffer.trim()) {
+    const event = JSON.parse(buffer);
+    generated += event.response ?? '';
+    onActivity?.();
+  }
+  return generated;
+}
+
 function generatedPngPath(output) {
   const match = stripTerminalCodes(output).match(/Image saved to:\s*(.+?\.png)\s*$/mi);
   if (!match) throw new Error('Ollama finished but did not report a PNG path. Update Ollama and make sure image generation is available, then try again.');
@@ -211,10 +252,8 @@ async function createArtworkPrompt({ name, outputDirectory, style = projectConfi
   const assetName = assetFileName(name);
   const category = artworkCategory(outputDirectory);
   const styleDescription = artworkStyle(style);
-  await assertAvailable('ollama');
   const instruction = `You write concise, production-ready image prompts. Create a single Flux image-generation prompt for "${name.trim()}", which is ${category}. Use this visual style: ${styleDescription}. Describe only that named ${category}; preserve a clean, centred silhouette at game UI size, generous padding, a transparent background, and no text, logo, frame, UI, scenery, or cropped parts. Do not mention SVG, vectorisation, Flux, or this instruction. Return only the final prompt in one paragraph.`;
-  const result = await run('ollama', ['run', promptModel, instruction], { onActivity });
-  const prompt = stripTerminalCodes(result.output).trim();
+  const prompt = stripTerminalCodes(await generateTextWithOllama(promptModel, instruction, onActivity)).trim();
   if (!prompt) throw new Error('Gemma returned an empty prompt. Make sure gemma4:12b is installed and try again.');
   return { prompt, model: promptModel, assetName, category, style };
 }
