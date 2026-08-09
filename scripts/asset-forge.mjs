@@ -7,7 +7,7 @@
  * text and output paths cannot become shell commands.
  */
 import { createServer } from 'node:http';
-import { access, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
@@ -17,6 +17,7 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceDirectory = resolve(process.cwd());
 const uiFile = resolve(scriptDirectory, '..', 'tools/asset-forge/index.html');
 const projectConfigFile = resolve(workspaceDirectory, 'asset-forge.config.json');
+const historyFile = resolve(workspaceDirectory, '.asset-forge-history.json');
 const pythonVectorizerFile = resolve(scriptDirectory, 'vectorize-with-vtracer.py');
 const host = '127.0.0.1';
 const port = Number(process.env.ASSET_FORGE_PORT ?? 4177);
@@ -295,7 +296,7 @@ async function forgeAsset({ outputDirectory, name, style = projectConfig.styles[
   await writeFile(pngPath, pngData);
   reportProgress(`Converting PNG to SVG with ${vectorizer === 'cli' ? 'VTracer' : 'the Python VTracer binding'}…`, 5, 'vectorize');
   await vectorize(pngPath, svgPath, vectorizer, reportActivity);
-  return { pngPath, svgPath, model, vectorizer, assetName, style };
+  return { pngPath, svgPath, model, vectorizer, assetName, style, folderId: folder.id };
 }
 
 const jobs = new Map();
@@ -344,6 +345,7 @@ async function processQueue() {
         const reportProgress = (stage, step, phase) => updateJob(job, { stage, step, phase, stageStartedAt: new Date().toISOString(), lastActivityAt: undefined });
         const reportActivity = () => updateJob(job, { lastActivityAt: new Date().toISOString() });
         const result = await forgeAsset(job.payload, reportProgress, reportActivity);
+        await recordArtwork(result, job.name);
         updateJob(job, { status: 'complete', stage: 'PNG and SVG saved.', result, finishedAt: new Date().toISOString() });
       } catch (error) {
         updateJob(job, { status: 'failed', stage: 'Job failed.', error: error instanceof Error ? error.message : 'Asset generation failed.', finishedAt: new Date().toISOString() });
@@ -356,6 +358,64 @@ async function processQueue() {
 
 function allPublicJobs() {
   return [...jobs.values()].sort((left, right) => Number(right.id) - Number(left.id)).map(publicJob);
+}
+
+async function loadArtworkHistory() {
+  try {
+    const history = JSON.parse(await readFile(historyFile, 'utf8'));
+    return Array.isArray(history) ? history.filter((entry) => entry && typeof entry === 'object') : [];
+  } catch { return []; }
+}
+
+async function recordArtwork(result, name) {
+  const history = await loadArtworkHistory();
+  const record = { name, assetName: result.assetName, folderId: result.folderId, pngPath: result.pngPath, svgPath: result.svgPath, createdAt: new Date().toISOString() };
+  await writeFile(historyFile, `${JSON.stringify([record, ...history.filter((entry) => entry.pngPath !== record.pngPath)], null, 2)}\n`);
+}
+
+function publicArtwork({ folder, assetName, name = assetName, pngPath, svgPath, createdAt, origin }) {
+  return {
+    id: `${folder.id}:${assetName}`,
+    name,
+    assetName,
+    pngPath,
+    svgPath,
+    createdAt,
+    origin,
+    previewUrl: `/api/artwork/${encodeURIComponent(folder.id)}/${encodeURIComponent(assetName)}/preview.png`,
+  };
+}
+
+async function generatedArtwork() {
+  const items = new Map();
+  for (const entry of await loadArtworkHistory()) {
+    const folder = projectConfig.outputFolders.find((candidate) => candidate.id === entry.folderId);
+    if (!folder || !assetNamePattern.test(entry.assetName ?? '')) continue;
+    try {
+      await access(entry.pngPath, constants.R_OK);
+      await access(entry.svgPath, constants.R_OK);
+      items.set(`${folder.id}:${entry.assetName}`, publicArtwork({ ...entry, folder, origin: 'recorded' }));
+    } catch { /* Omit moved or removed assets. */ }
+  }
+  for (const folder of projectConfig.outputFolders) {
+    const outputFolder = resolve(workspaceDirectory, folder.path);
+    try {
+      const entries = await readdir(outputFolder, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith('.png')) continue;
+        const assetName = entry.name.slice(0, -4);
+        if (!assetNamePattern.test(assetName) || items.has(`${folder.id}:${assetName}`)) continue;
+        const pngPath = resolve(outputFolder, entry.name);
+        const svgPath = resolve(outputFolder, `${assetName}.svg`);
+        try {
+          await access(svgPath, constants.R_OK);
+          const details = await stat(pngPath);
+          items.set(`${folder.id}:${assetName}`, publicArtwork({ folder, assetName, pngPath, svgPath, createdAt: details.mtime.toISOString(), origin: 'matched-pair' }));
+        } catch { /* Only complete PNG/SVG pairs are shown. */ }
+      }
+    } catch { /* A configured folder may no longer exist. */ }
+  }
+  return [...items.values()].sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
 }
 
 const server = createServer(async (request, response) => {
@@ -371,6 +431,10 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === 'GET' && request.url === '/api/config') {
       json(response, 200, projectConfig);
+      return;
+    }
+    if (request.method === 'GET' && request.url === '/api/artwork') {
+      json(response, 200, { artwork: await generatedArtwork() });
       return;
     }
     if (request.method === 'POST' && request.url === '/api/forge') {
@@ -389,6 +453,18 @@ const server = createServer(async (request, response) => {
         json(response, 404, { error: 'PNG preview is not available yet.' });
         return;
       }
+      response.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
+      response.end(await readFile(pngPath));
+      return;
+    }
+    const artworkPreviewMatch = request.method === 'GET' && request.url?.match(/^\/api\/artwork\/([a-z0-9-]+)\/([a-z0-9-]+)\/preview\.png$/);
+    if (artworkPreviewMatch) {
+      const folder = projectConfig.outputFolders.find((candidate) => candidate.id === artworkPreviewMatch[1]);
+      if (!folder) {
+        json(response, 404, { error: 'Artwork folder was not found.' });
+        return;
+      }
+      const pngPath = resolve(workspaceDirectory, folder.path, `${artworkPreviewMatch[2]}.png`);
       response.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
       response.end(await readFile(pngPath));
       return;
