@@ -4,7 +4,8 @@
   "private": true,
   "description": "Local queued PNG game artwork generator using Ollama.",
   "scripts": {
-    "start": "node ./scripts/asset-forge.mjs"
+    "start": "node ./scripts/asset-forge.mjs",
+    "make-transparent:recorded": "node ./scripts/make-recorded-pngs-transparent.mjs"
   },
   "engines": {
     "node": ">=20"

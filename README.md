@@ -16,6 +16,15 @@ connected to the image edge. The saved PNG therefore has transparency around
 the artwork while retaining internal white highlights, ready for Unity sprite
 import.
 
+To update previously generated Forge artwork, run this from the target game
+root:
+
+```bash
+node ./tools/svg-generator/scripts/make-recorded-pngs-transparent.mjs
+```
+
+It changes only PNGs listed in that project’s Asset Forge history.
+
 ## What the browser tool does
 
 Open the local Forge page, enter an artwork name such as **Minotaur**, choose
