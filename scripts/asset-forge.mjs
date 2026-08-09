@@ -31,6 +31,7 @@ const defaultStyle = {
   prompt: 'clean, readable 2D fantasy game artwork with strong silhouettes, balanced colours, and a transparent background',
 };
 const assetRootCandidates = ['public/assets/svg', 'assets/svg', 'public/assets', 'assets', 'src/assets'];
+const backgroundRequirement = 'Hard requirement: use a plain, solid, opaque pure white (#FFFFFF) background. Do not use transparency, gradients, scenery, frames, floor shadows, or environmental background elements.';
 
 function assetFileName(name) {
   if (typeof name !== 'string' || !name.trim()) throw new Error('Enter a name for the artwork.');
@@ -247,7 +248,7 @@ async function createArtworkPrompt({ name, outputDirectory, style = projectConfi
   const assetName = assetFileName(name);
   const category = artworkCategory(outputDirectory);
   const styleDescription = artworkStyle(style);
-  const instruction = `You write concise, production-ready image prompts. Create a single Flux image-generation prompt for "${name.trim()}", which is ${category}. Use this visual style: ${styleDescription}. Describe only that named ${category}; preserve a clean, centred silhouette at game UI size, generous padding, a transparent background, and no text, logo, frame, UI, scenery, or cropped parts. Do not mention SVG, vectorisation, Flux, or this instruction. Return only the final prompt in one paragraph.`;
+  const instruction = `You write concise, production-ready image prompts. Create a single Flux image-generation prompt for "${name.trim()}", which is ${category}. Use this visual style: ${styleDescription}. Describe only that named ${category}; preserve a clean, centred silhouette at game UI size, generous padding, and no text, logo, frame, UI, scenery, or cropped parts. ${backgroundRequirement} Do not mention SVG, vectorisation, Flux, or this instruction. Return only the final prompt in one paragraph.`;
   const prompt = stripTerminalCodes(await generateTextWithOllama(promptModel, instruction, onActivity)).trim();
   if (!prompt) throw new Error('Gemma returned an empty prompt. Make sure gemma4:12b is installed and try again.');
   return { prompt, model: promptModel, assetName, category, style };
@@ -291,7 +292,7 @@ async function forgeAsset({ outputDirectory, name, style = projectConfig.styles[
   reportProgress('Checking SVG conversion tools…', 2, 'tools');
   const vectorizer = await locateVectorizer();
   reportProgress(`Running Flux (${model})…`, 3, 'flux');
-  const pngData = await generateImageWithOllama(model, promptResult.prompt, reportActivity);
+  const pngData = await generateImageWithOllama(model, `${promptResult.prompt}\n\n${backgroundRequirement}`, reportActivity);
   reportProgress('Copying Flux PNG into the selected folder…', 4, 'copy');
   await writeFile(pngPath, pngData);
   reportProgress(`Converting PNG to SVG with ${vectorizer === 'cli' ? 'VTracer' : 'the Python VTracer binding'}…`, 5, 'vectorize');
