@@ -4,7 +4,14 @@ function isEdgeMattePixel({ data }, pixel) {
   const offset = pixel * 4;
   const alpha = data[offset + 3];
   if (alpha === 0) return true;
-  return data[offset] >= 220 && data[offset + 1] >= 220 && data[offset + 2] >= 220;
+  const red = data[offset];
+  const green = data[offset + 1];
+  const blue = data[offset + 2];
+  const lightest = Math.max(red, green, blue);
+  const darkest = Math.min(red, green, blue);
+  // Flux anti-aliases an opaque white canvas into a light, almost-neutral halo.
+  // Restrict this to the edge-connected matte so white details inside the art survive.
+  return darkest >= 190 && lightest - darkest <= 42;
 }
 
 /** Removes white anti-aliasing matte connected to the canvas edge, preserving enclosed white highlights. */
