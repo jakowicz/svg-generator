@@ -7,7 +7,7 @@
  * text and output paths cannot become shell commands.
  */
 import { createServer } from 'node:http';
-import { access, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { access, readFile, readdir, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
@@ -400,24 +400,6 @@ async function generatedArtwork() {
       await access(entry.svgPath, constants.R_OK);
       items.set(`${folder.id}:${entry.assetName}`, publicArtwork({ ...entry, folder, origin: 'recorded' }));
     } catch { /* Omit moved or removed assets. */ }
-  }
-  for (const folder of projectConfig.outputFolders) {
-    const outputFolder = resolve(workspaceDirectory, folder.path);
-    try {
-      const entries = await readdir(outputFolder, { withFileTypes: true });
-      for (const entry of entries) {
-        if (!entry.isFile() || !entry.name.endsWith('.png')) continue;
-        const assetName = entry.name.slice(0, -4);
-        if (!assetNamePattern.test(assetName) || items.has(`${folder.id}:${assetName}`)) continue;
-        const pngPath = resolve(outputFolder, entry.name);
-        const svgPath = resolve(outputFolder, `${assetName}.svg`);
-        try {
-          await access(svgPath, constants.R_OK);
-          const details = await stat(pngPath);
-          items.set(`${folder.id}:${assetName}`, publicArtwork({ folder, assetName, pngPath, svgPath, createdAt: details.mtime.toISOString(), origin: 'matched-pair' }));
-        } catch { /* Only complete PNG/SVG pairs are shown. */ }
-      }
-    } catch { /* A configured folder may no longer exist. */ }
   }
   return [...items.values()].sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
 }

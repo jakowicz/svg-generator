@@ -51,7 +51,7 @@
         <aside><h2>What happens</h2><div class="step"><b>1</b><span>Gemma 4 12B creates a Flux prompt from the name, folder, and selected style.</span></div><div class="step"><b>2</b><span>Calls your local Flux model through Ollama’s API.</span></div><div class="step"><b>3</b><span>Saves the PNG, then VTracer creates editable vector paths.</span></div><div class="step"><b>4</b><span>Saves a clean lowercase file name such as <code>minotaur.png</code> and <code>.svg</code>.</span></div><p class="status">Requires <code>gemma4:12b</code>, your Flux model, and either the <code>vtracer</code> CLI or Python package.<br><br>Python install: <code>python3 -m pip install vtracer</code></p></aside>
       </section>
       <section class="jobs" aria-labelledby="jobs-heading"><header><h2 id="jobs-heading">Forge queue</h2><span>One local model job runs at a time.</span></header><div class="job-list" id="job-list"><p class="empty-jobs">No jobs yet. Queue an artwork generation to begin.</p></div></section>
-      <section class="gallery" aria-labelledby="artwork-heading"><header><h2 id="artwork-heading">Generated artwork</h2><span>PNG/SVG pairs found in this project.</span></header><div class="artwork-list" id="artwork-list"><p class="empty-artwork">No generated PNG/SVG pairs found yet.</p></div></section>
+      <section class="gallery" aria-labelledby="artwork-heading"><header><h2 id="artwork-heading">Generated artwork</h2><span>Completed Forge jobs recorded in this project.</span></header><div class="artwork-list" id="artwork-list"><p class="empty-artwork">No recorded Forge jobs yet.</p></div></section>
     </main>
     <script>
       const form = document.querySelector('#forge-form'); const button = document.querySelector('#submit'); const status = document.querySelector('#status'); const folder = form.elements.outputDirectory; const style = form.elements.style; const stylePrompt = document.querySelector('#style-prompt'); const jobList = document.querySelector('#job-list'); const artworkList = document.querySelector('#artwork-list'); let knownJobs = []; let styles = new Map();
@@ -85,8 +85,8 @@
         catch (error) { status.className = 'status error'; status.textContent = error instanceof Error ? error.message : 'Could not read the forge queue.'; }
       }
       function renderArtwork(artwork) {
-        if (!artwork.length) { artworkList.innerHTML = '<p class="empty-artwork">No generated PNG/SVG pairs found yet.</p>'; return; }
-        artworkList.innerHTML = artwork.map((item) => `<article class="artwork" tabindex="0"><img src="${escapeHtml(item.previewUrl)}" alt="${escapeHtml(item.name)}" /><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.assetName)} · ${escapeHtml(item.origin === 'recorded' ? 'Forge record' : 'PNG/SVG pair')}</p><div class="artwork-paths">PNG  ${escapeHtml(item.pngPath)}\nSVG  ${escapeHtml(item.svgPath)}</div></article>`).join('');
+        if (!artwork.length) { artworkList.innerHTML = '<p class="empty-artwork">No recorded Forge jobs yet.</p>'; return; }
+        artworkList.innerHTML = artwork.map((item) => `<article class="artwork" tabindex="0"><img src="${escapeHtml(item.previewUrl)}" alt="${escapeHtml(item.name)}" /><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.assetName)} · Forge record</p><div class="artwork-paths">PNG  ${escapeHtml(item.pngPath)}\nSVG  ${escapeHtml(item.svgPath)}</div></article>`).join('');
       }
       async function refreshArtwork() {
         try { const response = await fetch('/api/artwork', { cache: 'no-store' }); if (!response.ok) throw new Error('Could not read generated artwork.'); const result = await response.json(); renderArtwork(result.artwork); }
